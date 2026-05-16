@@ -1,6 +1,16 @@
 import { create } from "zustand";
 import { supabase } from "@/lib/supabase";
-import type { Goal, GoalDraft, GoalSheet, SharedGoal } from "@/types";
+import { computeGoalScore } from "@/lib/utils";
+import type {
+  CheckIn,
+  CheckInStatus,
+  Goal,
+  GoalDraft,
+  GoalSheet,
+  Quarter,
+  SharedByProfile,
+  SharedGoal,
+} from "@/types";
 
 export interface SharedAssignment {
   link: SharedGoal;
@@ -11,6 +21,9 @@ interface GoalSheetState {
   currentSheet: GoalSheet | null;
   goals: Goal[];
   sharedAssignments: SharedAssignment[];
+  sharerProfiles: Record<string, SharedByProfile>;
+  checkIns: Record<string, CheckIn[]>; // keyed by goal_id, array across quarters
+  checkInsLoading: boolean;
   loading: boolean;
   error: string | null;
 
@@ -25,6 +38,16 @@ interface GoalSheetState {
   deleteGoal: (id: string) => Promise<{ error: string | null }>;
   updateSharedWeightage: (linkId: string, weightage: number) => Promise<{ error: string | null }>;
   submitSheet: () => Promise<{ error: string | null }>;
+
+  fetchCheckIns: (sheetId: string) => Promise<void>;
+  saveCheckIn: (
+    goalId: string,
+    quarter: Quarter,
+    actual: string | null,
+    actualDate: string | null,
+    status: CheckInStatus,
+  ) => Promise<{ error: string | null }>;
+
   reset: () => void;
 }
 
@@ -35,6 +58,9 @@ export const useGoalSheetStore = create<GoalSheetState>((set, get) => ({
   currentSheet: null,
   goals: [],
   sharedAssignments: [],
+  sharerProfiles: {},
+  checkIns: {},
+  checkInsLoading: false,
   loading: false,
   error: null,
 
@@ -69,7 +95,13 @@ export const useGoalSheetStore = create<GoalSheetState>((set, get) => ({
     }
 
     if (!sheet) {
-      set({ currentSheet: null, goals: [], sharedAssignments: [], loading: false });
+      set({
+        currentSheet: null,
+        goals: [],
+        sharedAssignments: [],
+        sharerProfiles: {},
+        loading: false,
+      });
       return;
     }
 
@@ -102,10 +134,30 @@ export const useGoalSheetStore = create<GoalSheetState>((set, get) => ({
       source: row.source as Goal,
     }));
 
+    const sharerIds = Array.from(
+      new Set(
+        (goals ?? [])
+          .map((g: any) => g.shared_by as string | null)
+          .filter((id: string | null): id is string => !!id),
+      ),
+    );
+
+    const sharerProfiles: Record<string, SharedByProfile> = {};
+    if (sharerIds.length > 0) {
+      const { data: sharers } = await supabase
+        .from("profiles")
+        .select("id, full_name, email, role")
+        .in("id", sharerIds);
+      for (const p of sharers ?? []) {
+        sharerProfiles[p.id] = p as SharedByProfile;
+      }
+    }
+
     set({
       currentSheet: sheet as GoalSheet,
       goals: (goals ?? []) as Goal[],
       sharedAssignments,
+      sharerProfiles,
       loading: false,
     });
   },
@@ -191,5 +243,103 @@ export const useGoalSheetStore = create<GoalSheetState>((set, get) => ({
     return { error: null };
   },
 
-  reset: () => set({ currentSheet: null, goals: [], sharedAssignments: [], error: null }),
+  fetchCheckIns: async (sheetId) => {
+    set({ checkInsLoading: true });
+
+    // First get the goals on this sheet so the IN filter is bounded
+    const { data: goals, error: gErr } = await supabase
+      .from("goals")
+      .select("id")
+      .eq("sheet_id", sheetId);
+
+    if (gErr) {
+      set({ checkInsLoading: false, error: gErr.message });
+      return;
+    }
+
+    const goalIds = (goals ?? []).map((g) => g.id);
+    if (goalIds.length === 0) {
+      set({ checkIns: {}, checkInsLoading: false });
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("check_ins")
+      .select("*")
+      .in("goal_id", goalIds);
+
+    if (error) {
+      set({ checkInsLoading: false, error: error.message });
+      return;
+    }
+
+    const map: Record<string, CheckIn[]> = {};
+    for (const row of (data ?? []) as CheckIn[]) {
+      (map[row.goal_id] ??= []).push(row);
+    }
+    set({ checkIns: map, checkInsLoading: false });
+  },
+
+  saveCheckIn: async (goalId, quarter, actual, actualDate, status) => {
+    const sheet = get().currentSheet;
+    if (!sheet) return { error: "No active sheet" };
+    if (sheet.status !== "APPROVED") {
+      return { error: "Goal sheet must be approved before logging check-ins" };
+    }
+
+    const goal = get().goals.find((g) => g.id === goalId);
+    if (!goal) return { error: "Goal not found" };
+
+    const score = computeGoalScore(goal, actual, actualDate);
+
+    const { data: userData } = await supabase.auth.getUser();
+    const uid = userData.user?.id;
+    if (!uid) return { error: "Not signed in" };
+
+    const payload = {
+      goal_id: goalId,
+      quarter,
+      actual,
+      actual_date: actualDate,
+      status,
+      score,
+    };
+
+    const { data, error } = await supabase
+      .from("check_ins")
+      .upsert(payload, { onConflict: "goal_id,quarter" })
+      .select()
+      .single();
+
+    if (error) return { error: error.message };
+
+    const row = data as CheckIn;
+
+    // Audit log — best-effort, do not fail the save if logging fails.
+    await supabase.from("audit_logs").insert({
+      goal_id: goalId,
+      sheet_id: sheet.id,
+      changed_by: uid,
+      action: "CHECK_IN_SAVED",
+      new_value: { quarter, actual, actual_date: actualDate, status, score },
+    });
+
+    const prev = get().checkIns[goalId] ?? [];
+    const nextForGoal = (() => {
+      const filtered = prev.filter((c) => c.quarter !== quarter);
+      return [...filtered, row];
+    })();
+    set({ checkIns: { ...get().checkIns, [goalId]: nextForGoal } });
+    return { error: null };
+  },
+
+  reset: () =>
+    set({
+      currentSheet: null,
+      goals: [],
+      sharedAssignments: [],
+      sharerProfiles: {},
+      checkIns: {},
+      error: null,
+    }),
 }));

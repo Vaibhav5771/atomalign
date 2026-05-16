@@ -14,6 +14,7 @@ export default function GoalSheetPage() {
     currentSheet,
     goals,
     sharedAssignments,
+    sharerProfiles,
     loading,
     fetchMySheet,
     totalWeightage,
@@ -82,7 +83,12 @@ export default function GoalSheetPage() {
 
       <Card>
         <CardContent className="pt-6">
-          <GoalList goals={goals} sharedAssignments={sharedAssignments} editable={false} />
+          <GoalList
+            goals={goals}
+            sharedAssignments={sharedAssignments}
+            sharerProfiles={sharerProfiles}
+            editable={false}
+          />
         </CardContent>
       </Card>
     </div>

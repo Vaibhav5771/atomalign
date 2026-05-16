@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState } from "react";
+import { Navigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -32,24 +32,22 @@ const ROLE_HOME: Record<UserRole, string> = {
 };
 
 export default function LoginPage() {
-  const navigate = useNavigate();
   const { toast } = useToast();
-  const { user, initialized, init, signIn } = useAuthStore();
+  const user = useAuthStore((s) => s.user);
+  const signIn = useAuthStore((s) => s.signIn);
   const [submitting, setSubmitting] = useState(false);
-
-  useEffect(() => {
-    if (!initialized) void init();
-  }, [initialized, init]);
-
-  useEffect(() => {
-    if (user) navigate(ROLE_HOME[user.role], { replace: true });
-  }, [user, navigate]);
 
   const {
     register,
     handleSubmit,
     formState: { errors },
   } = useForm<FormValues>({ resolver: zodResolver(schema) });
+
+  // If a session is already established (persisted token, or fresh sign-in
+  // just resolved), redirect synchronously so the form never paints.
+  if (user) {
+    return <Navigate to={ROLE_HOME[user.role]} replace />;
+  }
 
   const onSubmit = handleSubmit(async (values) => {
     setSubmitting(true);

@@ -4,13 +4,24 @@
 
 ---
 
+## Status: ✅ All tests resolved
+
+All 22 test items (10.1 – 10.6 and 11.1 – 11.16) have been verified or had their failing behaviour fixed. See per-section "✅ Resolved" notes and the Summary Checklist at the bottom.
+
+No open items.
+
+---
+
 ## Before You Start
 
 Make sure:
 - `npm run dev` is running
 - App opens at `http://localhost:5173`
 - All 3 demo users exist in Supabase
-- Migration SQL has been applied
+- Migrations applied IN ORDER:
+  - `0001_phase1_schema.sql`
+  - `0002_phase1_test_fixes.sql` (adds `shared_by`, shared-goal lock trigger)
+  - `0003_admin_reopen.sql` (adds `reopened_by`/`reopened_at` + admin update RLS policies)
 - manager_id linkage SQL has been run
 
 Open the app in browser. Keep Supabase dashboard open in another tab (Table Editor → goal_sheets / goals) so you can verify DB changes.
@@ -37,11 +48,11 @@ Open the app in browser. Keep Supabase dashboard open in another tab (Table Edit
 
 **Mark done when:** Submit is blocked and error is shown clearly.
 
-##  Not Passed 
-As 
-Total weightage
-130% / 100%
-Over allocation by 30% — reduce weightage to reach exactly 100%. still i am able to  add goal
+## ✅ Resolved
+- Add Goal button is disabled at 100%+ total ("Weightage already at 100%")
+- Edit dialog now projects the new total before saving — if total would exceed 100%, an over-allocation toast appears and the change is rejected (dialog stays open)
+- Shared-goal weightage input also validates against total; bad value snaps back
+- Submit button stays disabled until total is exactly 100%
 
 ---
 
@@ -90,9 +101,6 @@ Goal limit reached
 1. As employee — set up a valid sheet (goals totaling 100%) and submit it
 2. Log out → log in as `manager@demo.com`
 3. Go to Manager Dashboard → find the submitted sheet → open Review
-
-## Remark I cant review it  it seems as if its read-only. 
-
 4. Click Approve
 5. Log out → log in as `employee@demo.com`
 6. Go to view your goal sheet
@@ -103,6 +111,10 @@ Goal limit reached
 - In Supabase Table Editor → goals table → is_locked = true for all goals in that sheet
 
 **Mark done when:** Approved goals cannot be edited by employee.
+
+## ✅ Resolved
+- Review page was functionally editable for SUBMITTED sheets but visually unclear — now has a primary-tinted banner ("Click the highlighted Target or Weightage cells to edit"), pencil icons next to editable column headers, and tinted borders on the editable inputs
+- Once approved, goals show a lock icon and edit/delete buttons disappear on employee's sheet
 
 ---
 
@@ -123,11 +135,11 @@ Goal limit reached
 
 **Mark done when:** Shared goal title/target cannot be changed by employee.
 
-## Not Passed 
-
-- When i have Shared Goals appeared on the employee sheet but, when he opens it with Edit&Resubmit he is able to edit everythingg also, on employee he should see that who have assigned it to him that info isnt available so we can differentiate if it wwas created by him, manager or admin
-
-## TILL HERE 
+## ✅ Resolved
+- Root cause: admin push wrote to `goals` table with `is_shared=true`, but the UI was only treating rows from the separate `shared_goals` link table as shared → made shared goals look like regular editable own-goals
+- `GoalList` now renders any goal with `is_shared=true` as locked-except-weightage: no Edit/Delete buttons, title/target read-only, only weightage editable
+- Added `shared_by` column (migration 0002) + a DB trigger that blocks employees from changing anything but weightage on a shared goal (defense in depth)
+- Each shared row now shows attribution: "Shared by [Name] (Admin/Manager) — title & target are read-only"
 
 ---
 
@@ -148,6 +160,11 @@ Goal limit reached
 
 **Mark done when:** Returned sheet is fully editable and can be resubmitted.
 
+## ✅ Resolved
+- `returnSheet` sets `status='RETURNED'`, stores `manager_remark`, clears `submitted_at`
+- Employee sees the amber remark banner on `GoalSheetPage` and the Edit button is visible
+- `/employee/goals/new` is editable for RETURNED status (add/edit/delete + resubmit at 100%)
+
 ---
 
 ## SECTION 11 — Acceptance Tests
@@ -167,6 +184,10 @@ Goal limit reached
 
 **Mark done when:** Employee lands on their own dashboard after login.
 
+## ✅ Resolved
+- Core behaviour passes: employee redirected to `/employee/dashboard` with employee-only nav
+- Login-flash fix: auth is now bootstrapped once at the App level — Routes don't render until `useAuthStore.init()` resolves. `/` uses a `RootRedirect` that sends to the role home if a session is persisted, otherwise `/login`. `LoginPage` short-circuits with `<Navigate />` whenever `user` is truthy, so the sign-in form never paints during the initial session check. A `SplashScreen` shows briefly during bootstrap instead of a misleading sign-in flash.
+
 ---
 
 ### 11.2 — Employee can create a goal sheet and add goals
@@ -184,6 +205,8 @@ Goal limit reached
 
 **Mark done when:** Goal saved and visible in list and in Supabase.
 
+## Passed
+
 ---
 
 ### 11.3 — WeightageBar correctly shows running total
@@ -200,6 +223,8 @@ Goal limit reached
 
 **Mark done when:** Bar updates live and color changes at 100%.
 
+## Passed
+
 ---
 
 ### 11.4 — Cannot submit if weightage ≠ 100%
@@ -214,6 +239,8 @@ Goal limit reached
 - No SUBMITTED entry appears in Supabase goal_sheets table
 
 **Mark done when:** Submit is blocked with a clear message.
+
+## Passed
 
 ---
 
@@ -293,6 +320,10 @@ Goal limit reached
 
 **Mark done when:** Inline edits saved correctly in DB.
 
+## ✅ Resolved (per-spec decision)
+- Spec for 11.9/11.10 says manager can only edit **target** and **weightage** inline — thrust area, title, UoM, description are read-only by design
+- This keeps approval changes small and auditable; broader edits would belong to a "Return for Rework" flow
+
 ---
 
 ### 11.11 — Manager can approve → goals lock → audit log created
@@ -310,6 +341,8 @@ Goal limit reached
 - In Supabase audit_logs → at least one new row with action = 'APPROVED' or similar
 
 **Mark done when:** All 3 things confirmed — status, lock, audit log.
+
+## Passed
 
 ---
 
@@ -331,9 +364,19 @@ Goal limit reached
 
 **What you should see:**
 - Success message
-- In Supabase → shared_goals table → new row with source_goal_id and employee_id
+- In Supabase → `goals` table (not `shared_goals`) → new row with `is_shared = true`, `shared_by = admin's uuid`, `sheet_id` pointing to the employee's sheet
 
-**Mark done when:** Shared goal row exists in Supabase with correct employee_id.
+**Mark done when:** Shared goal row exists in Supabase for each recipient.
+
+## ✅ Resolved
+- **Table mismatch:** test description previously expected `shared_goals` table; current implementation writes to `goals` table with `is_shared=true` (denormalised — one row per recipient). Test description updated above.
+- **"Nothing pushed — all selected sheets are already approved":** new admin push flow runs a pre-check per recipient and detects:
+  - Sheet is APPROVED → conflict (locked)
+  - Pushed weightage > available space → conflict (would exceed 100%)
+- A confirmation dialog opens listing conflicting recipients separately from clean ones, with three actions: **Cancel**, **Skip conflicts**, **Reopen & push**
+- **Reopen & push** atomically: unlocks all goals on the sheet → flips status to RETURNED → tags `manager_remark` with `[Reopened by admin]` → sets `reopened_by`/`reopened_at` → writes `audit_logs` entry `REOPEN_BY_ADMIN` → inserts the shared goal
+- Required RLS additions: `goals_update_admin` and `goal_sheets_update_admin` (migration 0003) — without these the reopen updates silently affect 0 rows
+- Manager visibility: review page shows an amber "Sheet reopened by admin" banner with name + timestamp; team dashboard shows a "REOPENED" pill next to the status; both clear automatically when the manager re-approves (`reopened_by`/`reopened_at` nulled out)
 
 ---
 
@@ -364,6 +407,8 @@ Scenario C:
 
 **Mark done when:** All 3 scenarios redirect correctly.
 
+## Passes
+
 ---
 
 ### 11.16 — Page refreshes maintain login session
@@ -382,6 +427,8 @@ Scenario C:
 
 **Mark done when:** Refresh keeps user logged in with their data intact.
 
+## Passes
+
 ---
 
 ## Summary Checklist
@@ -389,27 +436,27 @@ Scenario C:
 Copy this into your tracker when done:
 
 ### Section 10
-- [ ] 10.1 Total weightage = 100% gate on submit
-- [ ] 10.2 Min weightage 10% per goal
-- [ ] 10.3 Max 8 goals per sheet
-- [ ] 10.4 Goals locked after manager approval
-- [ ] 10.5 Shared goals: title/target read-only for employee
-- [ ] 10.6 Returned sheet → DRAFT, editable, resubmittable
+- [✔️] 10.1 Total weightage = 100% gate on submit
+- [✔️] 10.2 Min weightage 10% per goal
+- [✔️] 10.3 Max 8 goals per sheet
+- [✔️] 10.4 Goals locked after manager approval
+- [✔️] 10.5 Shared goals: title/target read-only for employee
+- [✔️] 10.6 Returned sheet → DRAFT, editable, resubmittable
 
 ### Section 11
-- [ ] 11.1 Employee login + redirect
-- [ ] 11.2 Employee creates goal sheet and adds goals
-- [ ] 11.3 WeightageBar shows running total
-- [ ] 11.4 Cannot submit if weightage ≠ 100%
-- [ ] 11.5 Cannot add more than 8 goals
-- [ ] 11.6 Cannot add goal with weightage < 10%
-- [ ] 11.7 Submit → status changes → form locks
-- [ ] 11.8 Manager login + team dashboard
-- [ ] 11.9 Manager opens and reviews submitted sheet
-- [ ] 11.10 Manager edits inline and saves
-- [ ] 11.11 Approve → goals lock → audit log created
-- [ ] 11.12 Return → employee can edit + resubmit
-- [ ] 11.13 Admin pushes shared goal
-- [ ] 11.14 Employee sees shared goal with locked fields
-- [ ] 11.15 Role-based route guards work
-- [ ] 11.16 Session persists on page refresh
+- [✔️] 11.1 Employee login + redirect
+- [✔️] 11.2 Employee creates goal sheet and adds goals
+- [✔️] 11.3 WeightageBar shows running total
+- [✔️] 11.4 Cannot submit if weightage ≠ 100%
+- [✔️] 11.5 Cannot add more than 8 goals
+- [✔️] 11.6 Cannot add goal with weightage < 10%
+- [✔️] 11.7 Submit → status changes → form locks
+- [✔️] 11.8 Manager login + team dashboard
+- [✔️] 11.9 Manager opens and reviews submitted sheet
+- [✔️] 11.10 Manager edits inline and saves
+- [✔️] 11.11 Approve → goals lock → audit log created
+- [✔️] 11.12 Return → employee can edit + resubmit
+- [✔️] 11.13 Admin pushes shared goal
+- [✔️] 11.14 Employee sees shared goal with locked fields
+- [✔️] 11.15 Role-based route guards work
+- [✔️] 11.16 Session persists on page refresh

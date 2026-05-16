@@ -13,13 +13,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { Goal, GoalDraft, UoMType } from "@/types";
+import type { Goal, GoalDraft, ScoreDirection, UoMType } from "@/types";
 
 const schema = z.object({
   thrust_area: z.string().min(1, "Required"),
   title: z.string().min(1, "Required"),
   description: z.string().optional(),
   uom: z.enum(["NUMERIC", "PERCENT", "TIMELINE", "ZERO"]),
+  direction: z.enum(["HIGHER", "LOWER"]),
   target: z.string().min(1, "Required"),
   target_date: z.string().optional(),
   weightage: z
@@ -52,6 +53,7 @@ export function GoalForm({ initial, onSubmit, onCancel, submitLabel = "Add goal"
       title: initial?.title ?? "",
       description: initial?.description ?? "",
       uom: (initial?.uom as UoMType) ?? "NUMERIC",
+      direction: (initial?.direction as ScoreDirection) ?? "HIGHER",
       target: initial?.target ?? "",
       target_date: initial?.target_date ?? "",
       weightage: initial?.weightage ?? 10,
@@ -59,8 +61,10 @@ export function GoalForm({ initial, onSubmit, onCancel, submitLabel = "Add goal"
   });
 
   const uom = watch("uom");
+  const direction = watch("direction");
 
   const submit = handleSubmit(async (values) => {
+    const requiresDirection = values.uom === "NUMERIC" || values.uom === "PERCENT";
     const draft: GoalDraft = {
       thrust_area: values.thrust_area,
       title: values.title,
@@ -70,9 +74,13 @@ export function GoalForm({ initial, onSubmit, onCancel, submitLabel = "Add goal"
       target_date: values.target_date?.trim() ? values.target_date : null,
       weightage: values.weightage,
       is_shared: false,
+      shared_by: null,
+      direction: requiresDirection ? values.direction : "HIGHER",
     };
     await onSubmit(draft);
   });
+
+  const showDirection = uom === "NUMERIC" || uom === "PERCENT";
 
   return (
     <form onSubmit={submit} className="space-y-3" noValidate>
@@ -126,6 +134,40 @@ export function GoalForm({ initial, onSubmit, onCancel, submitLabel = "Add goal"
           <div className="space-y-1">
             <Label htmlFor="target_date">Target date</Label>
             <Input id="target_date" type="date" {...register("target_date")} />
+          </div>
+        )}
+        {showDirection && (
+          <div className="space-y-1">
+            <Label>Scoring direction</Label>
+            <p className="text-xs text-muted-foreground">
+              How is this goal scored?{" "}
+              <span className="font-medium">Higher is better</span> for metrics
+              you want to grow (revenue, NPS).{" "}
+              <span className="font-medium">Lower is better</span> for metrics
+              you want to shrink (cost, TAT, defects).
+            </p>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant={direction === "HIGHER" ? "default" : "outline"}
+                size="sm"
+                className="flex-1"
+                onClick={() => setValue("direction", "HIGHER", { shouldValidate: true })}
+                title="Score = Achievement ÷ Target. Use for grow-metrics like revenue or NPS."
+              >
+                Higher is better
+              </Button>
+              <Button
+                type="button"
+                variant={direction === "LOWER" ? "default" : "outline"}
+                size="sm"
+                className="flex-1"
+                onClick={() => setValue("direction", "LOWER", { shouldValidate: true })}
+                title="Score = Target ÷ Achievement. Use for shrink-metrics like cost, TAT, or defects."
+              >
+                Lower is better
+              </Button>
+            </div>
           </div>
         )}
         <div className="space-y-1">

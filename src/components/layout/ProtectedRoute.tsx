@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuthStore } from "@/stores/authStore";
 import type { UserRole } from "@/types";
@@ -14,22 +13,12 @@ const ROLE_HOME: Record<UserRole, string> = {
 };
 
 export function ProtectedRoute({ allowedRoles }: Props) {
-  const { user, session, loading, initialized, init } = useAuthStore();
+  const user = useAuthStore((s) => s.user);
+  const session = useAuthStore((s) => s.session);
   const location = useLocation();
 
-  useEffect(() => {
-    if (!initialized) {
-      void init();
-    }
-  }, [initialized, init]);
-
-  if (!initialized || loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center text-muted-foreground">
-        Loading…
-      </div>
-    );
-  }
+  // Auth bootstrap is done at App level, so by the time we render here
+  // `user`/`session` reflect the resolved state — no in-flight loading flash.
 
   if (!session || !user) {
     return <Navigate to="/login" replace state={{ from: location }} />;

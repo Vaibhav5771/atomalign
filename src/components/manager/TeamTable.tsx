@@ -49,7 +49,17 @@ export function TeamTable({ rows }: { rows: GoalSheetWithEmployee[] }) {
               <TableCell className="text-sm">{r.employee.department ?? "—"}</TableCell>
               <TableCell>
                 {hasSheet ? (
-                  <StatusBadge status={r.status} />
+                  <div className="flex items-center gap-1.5">
+                    <StatusBadge status={r.status} />
+                    {r.reopened_by && (
+                      <span
+                        className="text-[10px] px-1.5 py-0.5 border border-amber-400 bg-amber-50 text-amber-800 font-medium uppercase tracking-wide"
+                        title="Sheet was reopened by admin"
+                      >
+                        Reopened
+                      </span>
+                    )}
+                  </div>
                 ) : (
                   <span className="text-xs text-muted-foreground">Not started</span>
                 )}

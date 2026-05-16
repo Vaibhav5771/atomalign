@@ -10,7 +10,7 @@ import { GoalList } from "@/components/goals/GoalList";
 import { WeightageBar } from "@/components/goals/WeightageBar";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { useToast } from "@/hooks/use-toast";
-import type { GoalDraft } from "@/types";
+import type { Goal, GoalDraft } from "@/types";
 
 export default function NewGoalSheetPage() {
   const user = useAuthStore((s) => s.user);
@@ -20,6 +20,7 @@ export default function NewGoalSheetPage() {
     currentSheet,
     goals,
     sharedAssignments,
+    sharerProfiles,
     loading,
     fetchMySheet,
     createSheet,
@@ -72,6 +73,46 @@ export default function NewGoalSheetPage() {
       toast({ title: "Goal added" });
       setShowAddForm(false);
     }
+  };
+
+  const handleUpdateGoal = async (id: string, patch: Partial<Goal>) => {
+    if (typeof patch.weightage === "number") {
+      const current = goals.find((g) => g.id === id);
+      const delta = patch.weightage - (current?.weightage ?? 0);
+      const projectedTotal = totalWeightage() + delta;
+      if (projectedTotal > 100 && delta > 0) {
+        toast({
+          title: "Over-allocation",
+          description: `That change would push the total to ${projectedTotal}%. Reduce other goals first.`,
+          variant: "destructive",
+        });
+        return { error: "Total weightage cannot exceed 100%" };
+      }
+    }
+    const { error } = await updateGoal(id, patch);
+    if (error) {
+      toast({ title: "Update failed", description: error, variant: "destructive" });
+    }
+    return { error };
+  };
+
+  const handleUpdateSharedWeightage = async (linkId: string, weightage: number) => {
+    const current = sharedAssignments.find((s) => s.link.id === linkId);
+    const delta = weightage - (current?.link.weightage ?? 0);
+    const projectedTotal = totalWeightage() + delta;
+    if (projectedTotal > 100 && delta > 0) {
+      toast({
+        title: "Over-allocation",
+        description: `That change would push the total to ${projectedTotal}%. Reduce other goals first.`,
+        variant: "destructive",
+      });
+      return { error: "Total weightage cannot exceed 100%" };
+    }
+    const { error } = await updateSharedWeightage(linkId, weightage);
+    if (error) {
+      toast({ title: "Update failed", description: error, variant: "destructive" });
+    }
+    return { error };
   };
 
   const handleDelete = async (id: string) => {
@@ -149,6 +190,18 @@ export default function NewGoalSheetPage() {
         </div>
       )}
 
+      {editable && total > 100 && (
+        <div className="border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm">
+          <div className="font-medium text-destructive">
+            Total weightage is {total}% (over 100%)
+          </div>
+          <div className="text-destructive/90 mt-0.5">
+            A shared goal was added to your sheet. Reduce the weightage on your
+            own goals until the total returns to exactly 100% before resubmitting.
+          </div>
+        </div>
+      )}
+
       <Card>
         <CardContent className="pt-6">
           <WeightageBar total={total} />
@@ -183,10 +236,11 @@ export default function NewGoalSheetPage() {
             <GoalList
               goals={goals}
               sharedAssignments={sharedAssignments}
+              sharerProfiles={sharerProfiles}
               editable={editable}
-              onUpdate={updateGoal}
+              onUpdate={handleUpdateGoal}
               onDelete={handleDelete}
-              onUpdateSharedWeightage={updateSharedWeightage}
+              onUpdateSharedWeightage={handleUpdateSharedWeightage}
             />
           </CardContent>
         </Card>
@@ -195,7 +249,12 @@ export default function NewGoalSheetPage() {
       {!editable && (
         <Card>
           <CardContent className="pt-6">
-            <GoalList goals={goals} sharedAssignments={sharedAssignments} editable={false} />
+            <GoalList
+              goals={goals}
+              sharedAssignments={sharedAssignments}
+              sharerProfiles={sharerProfiles}
+              editable={false}
+            />
           </CardContent>
         </Card>
       )}

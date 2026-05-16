@@ -1,7 +1,23 @@
 import { create } from "zustand";
-import type { Session } from "@supabase/supabase-js";
+import { createClient, type Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
-import type { Profile } from "@/types";
+import type { Profile, UserRole } from "@/types";
+
+export interface AdminCreateUserArgs {
+  email: string;
+  password: string;
+  full_name: string;
+  role: UserRole;
+  manager_id?: string | null;
+  department?: string | null;
+}
+
+export interface AdminUpdateUserArgs {
+  full_name?: string;
+  role?: UserRole;
+  manager_id?: string | null;
+  department?: string | null;
+}
 
 interface AuthState {
   user: Profile | null;
@@ -12,6 +28,14 @@ interface AuthState {
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
+  adminCreateUser: (
+    args: AdminCreateUserArgs,
+  ) => Promise<{ error: string | null; userId?: string }>;
+  adminUpdateUser: (
+    userId: string,
+    patch: AdminUpdateUserArgs,
+  ) => Promise<{ error: string | null }>;
+  adminDeleteUser: (userId: string) => Promise<{ error: string | null }>;
 }
 
 async function fetchProfile(userId: string): Promise<Profile | null> {
@@ -96,5 +120,120 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (!id) return;
     const p = await fetchProfile(id);
     set({ user: p });
+  },
+
+  // Admin creates a new user. Uses an isolated Supabase client so the new
+  // user's sign-up session does NOT clobber the admin's persisted session.
+  // Profile row is created by the `handle_new_user` trigger; manager_id /
+  // department are patched afterwards via the main (admin) client.
+  adminCreateUser: async ({ email, password, full_name, role, manager_id, department }) => {
+    if (get().user?.role !== "ADMIN") {
+      return { error: "Only admins can create users" };
+    }
+
+    const url = import.meta.env.VITE_SUPABASE_URL as string;
+    const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
+    const ephemeral = createClient(url, key, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+        storageKey: `sb-admin-create-${Date.now()}`,
+      },
+    });
+
+    const { data: signUpData, error: signUpErr } = await ephemeral.auth.signUp({
+      email,
+      password,
+      options: { data: { full_name, role } },
+    });
+    if (signUpErr) return { error: signUpErr.message };
+    if (!signUpData.user) return { error: "Sign-up returned no user" };
+
+    const newUserId = signUpData.user.id;
+
+    // The trigger fires asynchronously after auth.users insert. Poll briefly
+    // for the profile row before patching it.
+    let exists = false;
+    for (let i = 0; i < 6; i++) {
+      const { data: row } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("id", newUserId)
+        .maybeSingle();
+      if (row) {
+        exists = true;
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    if (!exists) {
+      return {
+        error:
+          "User created in auth but profile row not yet visible. Refresh the page and patch manually if needed.",
+        userId: newUserId,
+      };
+    }
+
+    const patch: Record<string, unknown> = { full_name };
+    if (manager_id !== undefined) patch.manager_id = manager_id || null;
+    if (department !== undefined) patch.department = department || null;
+
+    const { error: patchErr } = await supabase
+      .from("profiles")
+      .update(patch)
+      .eq("id", newUserId);
+    if (patchErr) {
+      return {
+        error: `User created but profile patch failed: ${patchErr.message}`,
+        userId: newUserId,
+      };
+    }
+
+    return { error: null, userId: newUserId };
+  },
+
+  // Admin patches a profile: full_name / role / manager_id / department.
+  // Email and password changes are intentionally out of scope (auth-level ops).
+  adminUpdateUser: async (userId, patch) => {
+    if (get().user?.role !== "ADMIN") {
+      return { error: "Only admins can edit users" };
+    }
+    const payload: Record<string, unknown> = {};
+    if (patch.full_name !== undefined) payload.full_name = patch.full_name;
+    if (patch.role !== undefined) payload.role = patch.role;
+    if (patch.manager_id !== undefined) payload.manager_id = patch.manager_id || null;
+    if (patch.department !== undefined) payload.department = patch.department || null;
+
+    if (Object.keys(payload).length === 0) return { error: null };
+
+    const { error } = await supabase
+      .from("profiles")
+      .update(payload)
+      .eq("id", userId);
+    if (error) return { error: error.message };
+
+    // If the admin edited their own profile, refresh local cache.
+    if (userId === get().user?.id) {
+      await get().refreshProfile();
+    }
+    return { error: null };
+  },
+
+  // Hard-delete a user. Calls the SECURITY DEFINER RPC `admin_delete_user`
+  // which removes the row from auth.users; cascades clear profiles,
+  // goal_sheets, goals, check_ins, and shared_goals.
+  adminDeleteUser: async (userId) => {
+    if (get().user?.role !== "ADMIN") {
+      return { error: "Only admins can delete users" };
+    }
+    if (userId === get().user?.id) {
+      return { error: "You cannot delete your own account" };
+    }
+    const { error } = await supabase.rpc("admin_delete_user", {
+      target_user_id: userId,
+    });
+    if (error) return { error: error.message };
+    return { error: null };
   },
 }));

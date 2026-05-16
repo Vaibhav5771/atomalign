@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Lock, Loader2, Check } from "lucide-react";
+import { Lock, Loader2, Check, Pencil } from "lucide-react";
 import type { Goal } from "@/types";
 
 interface Props {
@@ -73,7 +73,10 @@ function InlineNumber({
         title={disabled ? "Read-only" : "Click to edit, blur to save"}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={() => void commit()}
-        className="h-7 w-20"
+        className={
+          "h-8 w-20 " +
+          (disabled ? "" : "border-primary/40 bg-background focus:border-primary")
+        }
       />
       {status === "saving" && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
       {status === "saved" && <Check className="h-3 w-3 text-green-600" />}
@@ -119,7 +122,10 @@ function InlineText({
         title={disabled ? "Read-only" : "Click to edit, blur to save"}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={() => void commit()}
-        className="h-7"
+        className={
+          "h-8 " +
+          (disabled ? "" : "border-primary/40 bg-background focus:border-primary")
+        }
       />
       {status === "saving" && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
       {status === "saved" && <Check className="h-3 w-3 text-green-600" />}
@@ -133,11 +139,14 @@ export function ReviewPanel({ goals, readOnly, onInlineUpdate }: Props) {
   return (
     <div className="space-y-3">
       {!readOnly && (
-        <p className="text-xs text-muted-foreground">
-          Click any <span className="font-medium text-foreground">Target</span> or{" "}
-          <span className="font-medium text-foreground">Weightage</span> cell to edit it. Changes
-          save automatically when you click away.
-        </p>
+        <div className="border border-primary/30 bg-primary/5 px-3 py-2 text-xs flex items-center gap-2">
+          <Pencil className="h-3.5 w-3.5 text-primary" />
+          <span>
+            Click the highlighted <span className="font-medium text-foreground">Target</span> or{" "}
+            <span className="font-medium text-foreground">Weightage</span> cells to edit. Changes
+            save automatically when you click away.
+          </span>
+        </div>
       )}
       <Table>
         <TableHeader>
@@ -145,8 +154,16 @@ export function ReviewPanel({ goals, readOnly, onInlineUpdate }: Props) {
             <TableHead className="w-[16%]">Thrust area</TableHead>
             <TableHead>Goal</TableHead>
             <TableHead className="w-[10%]">UoM</TableHead>
-            <TableHead className="w-[18%]">Target</TableHead>
-            <TableHead className="w-[14%]">Weightage</TableHead>
+            <TableHead className="w-[18%]">
+              <span className="inline-flex items-center gap-1">
+                Target {!readOnly && <Pencil className="h-3 w-3 text-primary" />}
+              </span>
+            </TableHead>
+            <TableHead className="w-[14%]">
+              <span className="inline-flex items-center gap-1">
+                Weightage {!readOnly && <Pencil className="h-3 w-3 text-primary" />}
+              </span>
+            </TableHead>
             <TableHead className="w-[40px]" />
           </TableRow>
         </TableHeader>

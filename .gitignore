@@ -12,6 +12,14 @@ dist
 dist-ssr
 *.local
 
+# Env files (Supabase keys, etc.) — keep .env.example committed
+.env
+.env.*
+!.env.example
+
+# Windows alternate-data-stream sidecars created by WSL bridge
+*:Zone.Identifier
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

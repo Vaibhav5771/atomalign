@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Loader2 } from "lucide-react";
+import { Loader2, AlertTriangle } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 import { useManagerStore } from "@/stores/managerStore";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,7 @@ export default function ReviewGoalSheet() {
     reviewSheet,
     reviewEmployee,
     reviewGoals,
+    reviewReopener,
     loading,
     fetchSheetForReview,
     updateGoalInline,
@@ -103,6 +104,24 @@ export default function ReviewGoalSheet() {
         </div>
         <StatusBadge status={reviewSheet.status} />
       </div>
+
+      {reviewSheet.reopened_by && (
+        <div className="border border-amber-300 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-sm flex items-start gap-2">
+          <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+          <div>
+            <div className="font-medium text-amber-800 dark:text-amber-200">
+              Sheet reopened by admin
+            </div>
+            <div className="text-amber-900 dark:text-amber-100 mt-0.5">
+              {reviewReopener?.full_name || reviewReopener?.email || "An admin"} reopened this sheet
+              {reviewSheet.reopened_at &&
+                ` on ${new Date(reviewSheet.reopened_at).toLocaleString()}`}
+              {" "}to push a shared goal. All goals were unlocked so the employee could rebalance.
+              Re-approve once weightages are correct.
+            </div>
+          </div>
+        </div>
+      )}
 
       <Card>
         <CardHeader>

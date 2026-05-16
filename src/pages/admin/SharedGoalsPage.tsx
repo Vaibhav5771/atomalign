@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, AlertTriangle } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,9 +13,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { useAuthStore } from "@/stores/authStore";
 import { currentCycleYear } from "@/stores/goalSheetStore";
-import type { Profile, UoMType } from "@/types";
+import type { Profile, SheetStatus, UoMType } from "@/types";
 
 interface FormState {
   thrust_area: string;
@@ -35,13 +45,31 @@ const EMPTY: FormState = {
   weightage: 10,
 };
 
+type PrecheckRow = {
+  employeeId: string;
+  name: string;
+  sheetId: string | null;
+  status: SheetStatus | null;
+  currentTotal: number;
+  available: number;
+  conflict: boolean;
+  reason: string;
+};
+
+const REOPEN_REMARK =
+  "[Reopened by admin] A shared goal was pushed to this sheet. Please rebalance weightages and resubmit for re-approval.";
+
 export default function SharedGoalsPage() {
   const { toast } = useToast();
+  const currentUser = useAuthStore((s) => s.user);
   const [employees, setEmployees] = useState<Profile[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [form, setForm] = useState<FormState>(EMPTY);
   const [loading, setLoading] = useState(true);
   const [pushing, setPushing] = useState(false);
+
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [precheck, setPrecheck] = useState<PrecheckRow[]>([]);
 
   useEffect(() => {
     void (async () => {
@@ -85,96 +113,229 @@ export default function SharedGoalsPage() {
     return null;
   };
 
-  const handlePush = async () => {
+  const runPrecheck = async (employeeIds: string[]): Promise<PrecheckRow[]> => {
+    const rows: PrecheckRow[] = [];
+    for (const empId of employeeIds) {
+      const profile = employees.find((p) => p.id === empId);
+      const name = profile?.full_name || profile?.email || empId;
+
+      const { data: sheet } = await supabase
+        .from("goal_sheets")
+        .select("id, status")
+        .eq("employee_id", empId)
+        .eq("cycle_year", currentCycleYear)
+        .maybeSingle();
+
+      if (!sheet) {
+        rows.push({
+          employeeId: empId,
+          name,
+          sheetId: null,
+          status: null,
+          currentTotal: 0,
+          available: 100,
+          conflict: false,
+          reason: "No sheet yet — will be created",
+        });
+        continue;
+      }
+
+      const { data: goals } = await supabase
+        .from("goals")
+        .select("weightage")
+        .eq("sheet_id", sheet.id);
+
+      const currentTotal = (goals ?? []).reduce(
+        (sum, g: { weightage: number }) => sum + (g.weightage || 0),
+        0,
+      );
+      const available = 100 - currentTotal;
+      const isApproved = sheet.status === "APPROVED";
+      const overflow = form.weightage > available;
+      const conflict = isApproved || overflow;
+
+      let reason = "";
+      if (isApproved && overflow) {
+        reason = `Sheet is APPROVED and total would become ${currentTotal + form.weightage}%`;
+      } else if (isApproved) {
+        reason = "Sheet is APPROVED — goals are locked";
+      } else if (overflow) {
+        reason = `Only ${available}% available — push would make total ${currentTotal + form.weightage}%`;
+      } else {
+        reason = `Total will be ${currentTotal + form.weightage}%`;
+      }
+
+      rows.push({
+        employeeId: empId,
+        name,
+        sheetId: sheet.id,
+        status: sheet.status as SheetStatus,
+        currentTotal,
+        available,
+        conflict,
+        reason,
+      });
+    }
+    return rows;
+  };
+
+  const pushOne = async (row: PrecheckRow): Promise<string | null> => {
+    let sheetId = row.sheetId;
+
+    // Create sheet if missing
+    if (!sheetId) {
+      const { data: created, error: cErr } = await supabase
+        .from("goal_sheets")
+        .insert({
+          employee_id: row.employeeId,
+          cycle_year: currentCycleYear,
+          status: "DRAFT",
+        })
+        .select()
+        .single();
+      if (cErr) return cErr.message;
+      sheetId = created.id;
+    }
+
+    const { error: gErr } = await supabase.from("goals").insert({
+      sheet_id: sheetId,
+      thrust_area: form.thrust_area,
+      title: form.title,
+      description: form.description.trim() || null,
+      uom: form.uom,
+      target: form.target,
+      weightage: form.weightage,
+      is_shared: true,
+      is_locked: false,
+      shared_by: currentUser?.id ?? null,
+    });
+    if (gErr) return gErr.message;
+    return null;
+  };
+
+  const reopenAndPush = async (row: PrecheckRow): Promise<string | null> => {
+    if (!row.sheetId) return pushOne(row);
+
+    // 1. Unlock all goals on the sheet. .select() lets us detect silent RLS
+    //    failures: zero rows returned where rows were expected.
+    const { data: unlocked, error: unlockErr } = await supabase
+      .from("goals")
+      .update({ is_locked: false })
+      .eq("sheet_id", row.sheetId)
+      .select("id, is_locked");
+    if (unlockErr) return unlockErr.message;
+    if (!unlocked || unlocked.length === 0) {
+      return "Could not unlock goals — admin update policy missing. Apply migration 0003_admin_reopen.sql.";
+    }
+
+    // 2. Move sheet back to RETURNED with a remark and reopen attribution.
+    //    .single() throws if RLS silently returns 0 rows.
+    const { data: updatedSheet, error: sErr } = await supabase
+      .from("goal_sheets")
+      .update({
+        status: "RETURNED",
+        manager_remark: REOPEN_REMARK,
+        submitted_at: null,
+        approved_at: null,
+        reopened_by: currentUser?.id ?? null,
+        reopened_at: new Date().toISOString(),
+      })
+      .eq("id", row.sheetId)
+      .select()
+      .single();
+    if (sErr) return sErr.message;
+    if (!updatedSheet) {
+      return "Could not reopen sheet — admin update policy missing. Apply migration 0003_admin_reopen.sql.";
+    }
+
+    // 3. Audit log for the reopen
+    if (currentUser?.id) {
+      await supabase.from("audit_logs").insert({
+        sheet_id: row.sheetId,
+        changed_by: currentUser.id,
+        action: "REOPEN_BY_ADMIN",
+        new_value: { status: "RETURNED", reason: REOPEN_REMARK },
+      });
+    }
+
+    // 4. Insert the shared goal
+    return pushOne(row);
+  };
+
+  const handlePushClick = async () => {
     const err = validate();
     if (err) {
       toast({ title: "Cannot push", description: err, variant: "destructive" });
       return;
     }
     setPushing(true);
-    const employeeIds = Array.from(selected);
+    const rows = await runPrecheck(Array.from(selected));
+    setPushing(false);
+
+    const anyConflict = rows.some((r) => r.conflict);
+    if (!anyConflict) {
+      // Straight through
+      await executePush(rows, /*reopen*/ false);
+      return;
+    }
+
+    // Show confirmation modal
+    setPrecheck(rows);
+    setConfirmOpen(true);
+  };
+
+  const executePush = async (rows: PrecheckRow[], reopenConflicts: boolean) => {
+    setPushing(true);
     let success = 0;
     let skipped = 0;
+    let reopened = 0;
     const errors: string[] = [];
 
-    for (const empId of employeeIds) {
-      // 1. Get or create the employee's sheet for the current cycle
-      const { data: existing } = await supabase
-        .from("goal_sheets")
-        .select("*")
-        .eq("employee_id", empId)
-        .eq("cycle_year", currentCycleYear)
-        .maybeSingle();
-
-      let sheetId: string | null = existing?.id ?? null;
-      if (!sheetId) {
-        const { data: created, error: cErr } = await supabase
-          .from("goal_sheets")
-          .insert({
-            employee_id: empId,
-            cycle_year: currentCycleYear,
-            status: "DRAFT",
-          })
-          .select()
-          .single();
-        if (cErr) {
-          errors.push(`${empId}: ${cErr.message}`);
-          continue;
-        }
-        sheetId = created.id;
-      }
-
-      if (existing && existing.status === "APPROVED") {
+    for (const row of rows) {
+      if (row.conflict && !reopenConflicts) {
         skipped++;
         continue;
       }
-
-      // 2. Insert goal into employee's sheet
-      const { error: gErr } = await supabase.from("goals").insert({
-        sheet_id: sheetId,
-        thrust_area: form.thrust_area,
-        title: form.title,
-        description: form.description.trim() || null,
-        uom: form.uom,
-        target: form.target,
-        weightage: form.weightage,
-        is_shared: true,
-        is_locked: false,
-      });
-      if (gErr) {
-        errors.push(`${empId}: ${gErr.message}`);
-        continue;
+      const reason =
+        row.conflict && reopenConflicts ? await reopenAndPush(row) : await pushOne(row);
+      if (reason) {
+        errors.push(`${row.name}: ${reason}`);
+      } else {
+        success++;
+        if (row.conflict) reopened++;
       }
-      success++;
     }
 
     setPushing(false);
+    setConfirmOpen(false);
+    setPrecheck([]);
 
     if (success > 0) {
+      const parts: string[] = [];
+      if (reopened > 0) parts.push(`${reopened} sheet${reopened > 1 ? "s" : ""} reopened`);
+      if (skipped > 0) parts.push(`${skipped} skipped`);
+      if (errors.length > 0) parts.push(`${errors.length} failed`);
       toast({
         title: `Pushed to ${success} employee${success > 1 ? "s" : ""}`,
-        description:
-          (skipped ? `Skipped ${skipped} approved sheet${skipped > 1 ? "s" : ""}. ` : "") +
-          (errors.length ? `${errors.length} failed.` : ""),
+        description: parts.join(" · ") || undefined,
       });
       setForm(EMPTY);
       setSelected(new Set());
-    } else if (errors.length) {
-      toast({
-        title: "Push failed",
-        description: errors[0],
-        variant: "destructive",
-      });
+    } else if (errors.length > 0) {
+      toast({ title: "Push failed", description: errors[0], variant: "destructive" });
     } else {
       toast({
         title: "Nothing pushed",
-        description: "All selected sheets are already approved.",
+        description: "All selected recipients were skipped.",
         variant: "destructive",
       });
     }
   };
 
   const allSelected = employees.length > 0 && selected.size === employees.length;
+
+  const conflicts = precheck.filter((r) => r.conflict);
+  const clean = precheck.filter((r) => !r.conflict);
 
   return (
     <div className="space-y-5 max-w-5xl">
@@ -296,15 +457,108 @@ export default function SharedGoalsPage() {
 
       <div className="flex justify-end">
         <Button
-          onClick={handlePush}
+          onClick={handlePushClick}
           disabled={pushing || selected.size === 0}
         >
           {pushing && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
           {pushing
-            ? "Pushing…"
+            ? "Working…"
             : `Push to ${selected.size} employee${selected.size === 1 ? "" : "s"}`}
         </Button>
       </div>
+
+      <Dialog
+        open={confirmOpen}
+        onOpenChange={(o) => {
+          if (!pushing) setConfirmOpen(o);
+        }}
+      >
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-600" />
+              Some recipients need their sheet reopened
+            </DialogTitle>
+            <DialogDescription>
+              The shared goal can't fit on the sheets below as-is. Reopening will set the sheet to
+              RETURNED, unlock all goals so the employee can rebalance, and notify them with a
+              remark. Manager will need to re-approve.
+            </DialogDescription>
+          </DialogHeader>
+
+          {conflicts.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-sm font-medium">
+                Will need reopen ({conflicts.length})
+              </div>
+              <div className="border border-amber-300 bg-amber-50 dark:bg-amber-900/10">
+                {conflicts.map((r) => (
+                  <div
+                    key={r.employeeId}
+                    className="flex items-start justify-between gap-3 px-3 py-2 border-b border-amber-200 last:border-b-0 text-sm"
+                  >
+                    <div>
+                      <div className="font-medium">{r.name}</div>
+                      <div className="text-xs text-muted-foreground">{r.reason}</div>
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className="bg-amber-100 text-amber-800 border-amber-300"
+                    >
+                      {r.status ?? "—"}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {clean.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-sm font-medium">Will push cleanly ({clean.length})</div>
+              <div className="border border-border">
+                {clean.map((r) => (
+                  <div
+                    key={r.employeeId}
+                    className="flex items-start justify-between gap-3 px-3 py-2 border-b border-border last:border-b-0 text-sm"
+                  >
+                    <div>
+                      <div className="font-medium">{r.name}</div>
+                      <div className="text-xs text-muted-foreground">{r.reason}</div>
+                    </div>
+                    <Badge variant="outline">{r.status ?? "NEW"}</Badge>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              disabled={pushing}
+              onClick={() => setConfirmOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="outline"
+              disabled={pushing || clean.length === 0}
+              onClick={() => void executePush(precheck, false)}
+            >
+              {pushing && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+              Skip conflicts · push to {clean.length}
+            </Button>
+            <Button
+              disabled={pushing}
+              onClick={() => void executePush(precheck, true)}
+            >
+              {pushing && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+              Reopen &amp; push to {precheck.length}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
