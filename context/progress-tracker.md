@@ -1,7 +1,7 @@
 # Goal Portal — Master Progress Tracker
 
 **Last updated:** 2026-05-16
-**Overall completion:** ~95% (Phase 1 ✅ · P1 ✅ tested · P2 ✅ tested · P3 ✅ tested · admin user mgmt ✅ tested · deployment pending — see [deployment.md](./deployment.md))
+**Overall completion:** ~97% (all phases done · Vercel deployed but env vars broken · 5 tasks remain — see Deployment section below)
 
 ---
 
@@ -14,7 +14,7 @@
 | Phase 2 — P1 | Quarterly check-ins | ✅ Complete · all 31 tests passed | 20% |
 | Phase 2 — P2 | Reporting & governance | ✅ Complete · all P2 tests passed | 20% |
 | Phase 2 — P3 | Analytics module | ✅ Complete · all P3 tests passed | 10% |
-| Deployment & submission | Firebase + docs | ⬜ Not started | 5% |
+| Deployment & submission | Vercel + docs | 🔄 In progress · blocked on Vercel env vars | 5% |
 
 ---
 
@@ -292,12 +292,32 @@ Replaces the original "create users by hand in the Supabase Auth dashboard" work
 ---
 
 # DEPLOYMENT & SUBMISSION
-> Detailed checklist + step-by-step plan lives in [deployment.md](./deployment.md). High-level deliverables tracked below.
+> Detailed checklist + step-by-step plan lives in [deployment.md](./deployment.md). Submission deadline: **2026-05-18 08:00**.
 
-- [ ] `npm run build` passes with 0 errors and 0 TypeScript errors
-- [ ] App deployed to a live URL
-- [ ] Live URL tested — all 3 role journeys work on deployed version
-- [ ] Architecture diagram created (Excalidraw or draw.io — 10 min max)
-- [ ] GitHub repo pushed — clean commit history, README with setup instructions
-- [ ] Login credentials doc: email + password for all 3 demo users
-- [ ] Submission form filled: live URL, repo link, architecture diagram, credentials doc
+## Completed (2026-05-16)
+
+- [x] `npm run build` passes with 0 errors and 0 TypeScript errors (TS clean, Vite built 1.47 MB / 435 KB gzipped, 3.38s)
+- [x] **GitHub repo pushed** — `Vaibhav5771/in-house-goal-setting-progress-tracker` on `main`, commit `2612c6a Add Phase 1.5 admin user mgmt, Phase 2 (check-ins, reports, analytics), deployment prep`. All 6 migrations now in repo; 11 new pages/components added; .env untracked (gitignored)
+- [x] **README replaced** — boilerplate gone, proper project overview + setup steps + hackathon mapping
+- [x] **Login credentials doc** — [context/demo-credentials.md](./demo-credentials.md) drafted with 3 demo users + happy-path walk-through
+- [x] **App deployed to Vercel** — first build live at https://in-house-goal-setting-progress-trac.vercel.app/login (Phase 1 only) · second build at commit `2612c6a` is broken (env var issue, see below)
+- [x] **Supabase Auth URL config** — Site URL + Redirect URLs set to the Vercel domain
+
+## Blocker (resume here)
+
+- ⚠️ **Vercel env vars not reaching the Production build.** Diagnosis: downloaded the live bundle, searched for `https://*.supabase.co` and `eyJ...` (publishable JWT prefix) — both absent. Vite saw empty values at build time and baked the "Missing Supabase env vars" throw into the bundle.
+- **Symptom in browser:** `Uncaught Error: Missing Supabase env vars. Set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY in .env` at `index-k7IyKfg0.js`
+- **Tried so far:** added env vars in Vercel (initially only Preview), then re-ticked Production. Redeploy ran but only 26s (cache hit). Nuclear reset (delete + re-add both env vars with all 3 environment checkboxes ticked) was started — user reports "done" but the force-redeploy commit `241eb4d` hasn't been pushed yet.
+- **Local commit waiting to be pushed:** `241eb4d Force Vercel redeploy to pick up env vars` (empty commit, ahead of origin/main by 1).
+
+## Remaining tasks (5)
+
+- [ ] **1. Push empty commit `241eb4d`** to force a fresh Vercel build that picks up the re-added env vars. Push via VSCode sync arrow or terminal. Watch the resulting Vercel build — duration should be 60–120s (a sub-30s build means cache is still winning).
+- [ ] **2. Live-URL smoke test for all 3 role journeys** — once the redeploy is green, run the minimal sweep documented in [deployment.md](./deployment.md) section 3:
+  - Employee: login → Dashboard / My Goals / **My Check-ins** sidebar items
+  - Manager: login → Dashboard / **Team Check-ins** sidebar
+  - Admin: login → Dashboard / Shared Goals / **Users / Reports / Analytics** sidebar; click each
+  - DevTools console clear on every page
+- [ ] **3. Draw architecture.png** — use the layout in [context/architecture-spec.md](./architecture-spec.md), open Excalidraw, follow the 10-step recipe at the bottom, export PNG to `context/architecture.png`, link from README.
+- [ ] **4. Rotate Supabase publishable key (Option B from chat)** — the publishable key still in git history at commit `18519e8 Implement  Phase 1`. Supabase Dashboard → Settings → API → rotate publishable (anon) key → update local `.env` AND Vercel env vars AND trigger a redeploy. Do this **before** filling the submission form.
+- [ ] **5. Fill submission form** — live URL · repo link · architecture diagram link · demo credentials doc link. Deadline 2026-05-18 08:00.
