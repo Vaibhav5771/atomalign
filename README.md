@@ -1,8 +1,8 @@
-# In-House Goal Setting & Tracking Portal
+# AtomAlign
 
-Web portal for company-wide quarterly goal setting, manager approval, achievement tracking, and HR-level analytics. Built for **AtomQuest Hackathon 1.0**.
+In-house portal for company-wide quarterly goal setting, manager approval, achievement tracking, and HR-level analytics. Built for **AtomQuest Hackathon 1.0**.
 
-**Live demo:** https://in-house-goal-setting-progress-trac.vercel.app
+**Live demo:** https://atomalign.vercel.app
 **Demo credentials:** see [`context/demo-credentials.md`](./context/demo-credentials.md)
 **Architecture diagram:** see [`context/architecture.png`](./context/architecture.png)
 
@@ -65,8 +65,8 @@ context/             phase plans, test plans, deployment doc,
 
 ```bash
 # 1. clone + install
-git clone https://github.com/Vaibhav5771/in-house-goal-setting-progress-tracker.git
-cd in-house-goal-setting-progress-tracker
+git clone https://github.com/Vaibhav5771/atomalign.git
+cd atomalign
 npm install
 
 # 2. configure env

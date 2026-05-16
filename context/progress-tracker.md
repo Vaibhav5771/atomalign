@@ -1,4 +1,4 @@
-# Goal Portal — Master Progress Tracker
+# AtomAlign — Master Progress Tracker
 
 **Last updated:** 2026-05-16
 **Overall completion:** ~97% (all phases done · Vercel deployed but env vars broken · 5 tasks remain — see Deployment section below)
@@ -297,10 +297,10 @@ Replaces the original "create users by hand in the Supabase Auth dashboard" work
 ## Completed (2026-05-16)
 
 - [x] `npm run build` passes with 0 errors and 0 TypeScript errors (TS clean, Vite built 1.47 MB / 435 KB gzipped, 3.38s)
-- [x] **GitHub repo pushed** — `Vaibhav5771/in-house-goal-setting-progress-tracker` on `main`, commit `2612c6a Add Phase 1.5 admin user mgmt, Phase 2 (check-ins, reports, analytics), deployment prep`. All 6 migrations now in repo; 11 new pages/components added; .env untracked (gitignored)
+- [x] **GitHub repo pushed** — `Vaibhav5771/atomalign` on `main`, commit `2612c6a Add Phase 1.5 admin user mgmt, Phase 2 (check-ins, reports, analytics), deployment prep`. All 6 migrations now in repo; 11 new pages/components added; .env untracked (gitignored)
 - [x] **README replaced** — boilerplate gone, proper project overview + setup steps + hackathon mapping
 - [x] **Login credentials doc** — [context/demo-credentials.md](./demo-credentials.md) drafted with 3 demo users + happy-path walk-through
-- [x] **App deployed to Vercel** — first build live at https://in-house-goal-setting-progress-trac.vercel.app/login (Phase 1 only) · second build at commit `2612c6a` is broken (env var issue, see below)
+- [x] **App deployed to Vercel** — first build live at https://atomalign.vercel.app/login (Phase 1 only) · second build at commit `2612c6a` is broken (env var issue, see below)
 - [x] **Supabase Auth URL config** — Site URL + Redirect URLs set to the Vercel domain
 
 ## Blocker (resume here)

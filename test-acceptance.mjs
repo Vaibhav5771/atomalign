@@ -1,7 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 
-const envText = readFileSync("/home/vaibh/In-House Goal Setting & Tracking Portal/.env", "utf8");
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const envText = readFileSync(join(__dirname, ".env"), "utf8");
 const env = Object.fromEntries(
   envText.split("\n").filter(Boolean).map((l) => {
     const i = l.indexOf("=");

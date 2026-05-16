@@ -113,7 +113,7 @@ Use this as a script to draw the diagram in Excalidraw (excalidraw.com — no si
 4. Color suggestion: Users = blue, Frontend = green, Backend = orange (or stick with mono)
 5. Arrows from Users → Frontend → Backend
 6. Add the side annotation box on the right
-7. **Top of page heading:** "In-House Goal Setting & Tracking Portal — Architecture"
+7. **Top of page heading:** "AtomAlign — Architecture"
 8. **Bottom-right of page:** small text "AtomQuest Hackathon 1.0 · Vaibhav"
 9. File → Export image → PNG → check "Embed scene" off → Download
 10. Save as `context/architecture.png`

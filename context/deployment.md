@@ -1,6 +1,6 @@
 # Deployment & Submission Tracker
 
-**Owner:** Vaibhav · **Repo:** [Vaibhav5771/in-house-goal-setting-progress-tracker](https://github.com/Vaibhav5771/in-house-goal-setting-progress-tracker) · **Target:** hackathon submission
+**Owner:** Vaibhav · **Repo:** [Vaibhav5771/atomalign](https://github.com/Vaibhav5771/atomalign) · **Target:** hackathon submission
 
 Status legend: ⬜ pending · 🔄 in progress · ✅ done · ⚠️ blocked
 
@@ -47,7 +47,7 @@ Pick **one** track below based on Q1.
 ### Track A — Vercel (recommended for speed)
 
 - [ ] Sign in at vercel.com with the GitHub account that owns the repo
-- [ ] Import `Vaibhav5771/in-house-goal-setting-progress-tracker`
+- [ ] Import `Vaibhav5771/atomalign`
 - [ ] Framework preset: **Vite** (auto-detected)
 - [ ] Build command: `npm run build` · Output dir: `dist` (auto-filled)
 - [ ] Add env vars in Vercel project settings → Environment Variables:
@@ -109,7 +109,7 @@ Run all three role journeys against the **deployed** URL, not localhost.
 ## 4. Submission Deliverables (Section 8 of problem statement)
 
 - [ ] **Live URL** — paste here once deployed: `__________________`
-- [ ] **Source code repo** — https://github.com/Vaibhav5771/in-house-goal-setting-progress-tracker
+- [ ] **Source code repo** — https://github.com/Vaibhav5771/atomalign
   - [ ] Replace boilerplate `README.md` with: project summary, tech stack, setup steps, env vars, link to migrations, demo creds (or pointer to creds doc)
   - [ ] All migrations committed under `supabase/migrations/`
   - [ ] `.env` is gitignored; verify with `git check-ignore .env`
@@ -143,7 +143,7 @@ Skip unless deployment is green and there's time on the clock. See verdict in ea
 | 2026-05-16 | Deployment plan drafted | ✅ |
 | 2026-05-16 | Hosting chosen: Vercel · same Supabase reused · demo creds confirmed | ✅ |
 | 2026-05-16 | Local pre-flight: `npm run build` clean, `.gitignore` patched, `.env.example` added, README rewritten, demo-creds + arch spec drafted | ✅ |
-| 2026-05-16 | First deploy: https://in-house-goal-setting-progress-trac.vercel.app | ✅ |
+| 2026-05-16 | First deploy: https://atomalign.vercel.app | ✅ |
 | 2026-05-16 | Supabase Site URL + Redirect URLs set to Vercel URL | ✅ |
 | ___ | `.env` untracked + git commit + push (Option A) | ⬜ |
 | ___ | All role journeys passing on live URL | ⬜ |

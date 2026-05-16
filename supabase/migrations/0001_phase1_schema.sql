@@ -1,5 +1,5 @@
 -- =============================================================================
--- Phase 1 Schema: Goal Setting & Tracking Portal
+-- Phase 1 Schema: AtomAlign
 -- Apply via: Supabase Dashboard → SQL Editor → New query → paste → Run
 -- =============================================================================
 

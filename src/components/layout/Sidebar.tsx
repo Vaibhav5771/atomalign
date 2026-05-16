@@ -45,7 +45,7 @@ export function Sidebar() {
   return (
     <aside className="w-60 shrink-0 border-r border-border bg-card flex flex-col">
       <div className="px-5 py-5 border-b border-border">
-        <div className="text-base font-semibold">Goal Portal</div>
+        <div className="text-base font-semibold">AtomAlign</div>
         <div className="text-xs text-muted-foreground mt-0.5">Phase 2</div>
       </div>
       <nav className="flex-1 p-3 space-y-1">

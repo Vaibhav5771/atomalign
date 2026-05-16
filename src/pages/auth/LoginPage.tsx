@@ -63,7 +63,7 @@ export default function LoginPage() {
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle>Sign in</CardTitle>
-          <CardDescription>Goal Setting & Tracking Portal</CardDescription>
+          <CardDescription>AtomAlign — Goal Setting & Tracking</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={onSubmit} className="space-y-3" noValidate>

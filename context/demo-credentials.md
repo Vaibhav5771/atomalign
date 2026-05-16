@@ -1,6 +1,6 @@
-# Demo Credentials — Goal Setting & Tracking Portal
+# Demo Credentials — AtomAlign
 
-**Live demo URL:** https://in-house-goal-setting-progress-trac.vercel.app
+**Live demo URL:** https://atomalign.vercel.app
 
 These accounts are pre-seeded in the Supabase project backing the live demo. All passwords are the same so judges can switch roles quickly.
 
