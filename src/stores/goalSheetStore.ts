@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { supabase } from "@/lib/supabase";
+import { notify } from "@/lib/notify";
 import { computeGoalScore } from "@/lib/utils";
 import type {
   CheckIn,
@@ -240,6 +241,8 @@ export const useGoalSheetStore = create<GoalSheetState>((set, get) => ({
       .single();
     if (error) return { error: error.message };
     set({ currentSheet: data as GoalSheet });
+
+    notify({ event: "submitted", sheetId: sheet.id, actorId: sheet.employee_id });
     return { error: null };
   },
 
@@ -330,6 +333,13 @@ export const useGoalSheetStore = create<GoalSheetState>((set, get) => ({
       return [...filtered, row];
     })();
     set({ checkIns: { ...get().checkIns, [goalId]: nextForGoal } });
+
+    notify({
+      event: "checkin_saved",
+      sheetId: sheet.id,
+      actorId: uid,
+      quarter,
+    });
     return { error: null };
   },
 

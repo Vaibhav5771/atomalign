@@ -18,6 +18,8 @@ export interface Profile {
   manager_id: string | null;
   department: string | null;
   created_at: string;
+  azure_oid?: string | null;
+  auth_provider?: string | null;
 }
 
 export interface GoalSheet {

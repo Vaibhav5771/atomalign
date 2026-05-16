@@ -1,7 +1,7 @@
 # AtomAlign — Master Progress Tracker
 
-**Last updated:** 2026-05-16
-**Overall completion:** ~97% (all phases done · Vercel deployed but env vars broken · 5 tasks remain — see Deployment section below)
+**Last updated:** 2026-05-17
+**Overall completion:** ~99% (Phase 5 bonus code merged on `feature/microsoft-integration` branch · pending Azure/Resend/Teams external config + manual test pass · Vercel env-var blocker still open)
 
 ---
 
@@ -14,6 +14,8 @@
 | Phase 2 — P1 | Quarterly check-ins | ✅ Complete · all 31 tests passed | 20% |
 | Phase 2 — P2 | Reporting & governance | ✅ Complete · all P2 tests passed | 20% |
 | Phase 2 — P3 | Analytics module | ✅ Complete · all P3 tests passed | 10% |
+| Phase 5 — 5.1 | Entra ID SSO + Graph org sync (bonus) | 🔄 Code done · external config + tests pending | — |
+| Phase 5 — 5.2 | Email + Teams notifications (bonus) | 🔄 Code done · external config + tests pending | — |
 | Deployment & submission | Vercel + docs | 🔄 In progress · blocked on Vercel env vars | 5% |
 
 ---
@@ -286,6 +288,62 @@ Replaces the original "create users by hand in the Supabase Auth dashboard" work
 > See the walkthrough in [04-p3-test.md](./04-p3-test.md) (21 numbered tests across Sections 20–25).
 
 - [x] All P3 tests passed
+
+---
+
+---
+
+# PHASE 5 — Microsoft Integration (Bonus, BRD §5.1 + §5.2)
+> 🔄 Code merged on `feature/microsoft-integration` · `npm run build` passes (0 TS errors, 2.94s) · external config + manual test pass still pending
+>
+> Full setup guide: [05-microsoft-integration.md](./05-microsoft-integration.md) · Test walkthrough: [05-microsoft-integration-test.md](./05-microsoft-integration-test.md)
+
+## 5.1 — Entra ID SSO + Org Hierarchy Sync
+
+### Database
+- [x] `supabase/migrations/0007_microsoft_integration.sql` — adds nullable `profiles.azure_oid` (+ unique partial index) and `profiles.auth_provider`; patches `handle_new_user()` to accept Azure's `name` claim and tag rows with their provider (`email` vs `azure`)
+- [ ] **(user action)** Migration 0007 applied in Supabase SQL Editor
+
+### Azure App Registration & Supabase wiring
+- [ ] **(user action)** Azure App Registration created (multi-tenant; `User.Read` delegated; web redirect = Supabase callback URL)
+- [ ] **(user action)** Supabase → Authentication → Providers → Azure enabled with client ID + secret
+- [ ] **(user action)** Supabase → Authentication → URL Configuration → Redirect URLs include `http://localhost:5174/auth/callback` and `https://atomalign.vercel.app/auth/callback`
+
+### Client code
+- [x] `src/lib/graph.ts` — Microsoft Graph `/me` client with `$expand=manager`; maps `displayName`/`mail`/`department` and resolves `manager_id` by email lookup
+- [x] `src/stores/authStore.ts` — adds `signInWithMicrosoft()` + `syncing` flag; existing `onAuthStateChange` listener runs Graph sync when `app_metadata.provider === 'azure'`
+- [x] `src/types/index.ts` — `Profile` interface extended with optional `azure_oid` + `auth_provider`
+
+### Pages & routing
+- [x] `src/pages/auth/AuthCallbackPage.tsx` — landing page at `/auth/callback`; waits for `syncing` to clear, redirects to role home
+- [x] `src/pages/auth/LoginPage.tsx` — "Sign in with Microsoft" button below existing email/password form (additive only, demo logins unchanged)
+- [x] `src/App.tsx` — `/auth/callback` route added
+
+## 5.2 — Email + Teams Notifications
+
+### Edge Function
+- [x] `supabase/functions/notify/index.ts` — accepts `{event, sheet_id, actor_id, remark?, quarter?}`; resolves recipient (manager for employee actions; employee for manager actions); sends Resend email + Adaptive Card to Teams in parallel; CORS-safe; degrades gracefully when either secret is unset
+- [ ] **(user action)** `supabase functions deploy notify --no-verify-jwt` run
+- [ ] **(user action)** Secrets set: `RESEND_API_KEY`, `RESEND_FROM`, `TEAMS_WEBHOOK_URL`, `APP_BASE_URL`
+
+### Client wrapper
+- [x] `src/lib/notify.ts` — fire-and-forget wrapper around `supabase.functions.invoke('notify')`; logs warnings but never throws; UI is never blocked
+
+### Trigger points wired
+- [x] Employee submits goal sheet → `notify({event: "submitted"})` (recipient = manager) — in `goalSheetStore.submitSheet`
+- [x] Manager approves sheet → `notify({event: "approved"})` (recipient = employee) — in `managerStore.approveSheet`
+- [x] Manager returns sheet → `notify({event: "returned"})` (recipient = employee) — in `managerStore.returnSheet`
+- [x] Employee saves check-in → `notify({event: "checkin_saved"})` (recipient = manager) — in `goalSheetStore.saveCheckIn`
+
+### Teams Incoming Webhook
+- [ ] **(user action)** Incoming Webhook (or Power Automate Workflow alternative) created in target Teams channel; URL stored as the `TEAMS_WEBHOOK_URL` secret above
+
+### Phase 5 Acceptance Tests
+> See the walkthrough in [05-microsoft-integration-test.md](./05-microsoft-integration-test.md) (21 numbered tests across Sections 26–30).
+>
+> Section 27 is the regression sweep — runs the 3 demo passwords + admin user-creation BEFORE touching Microsoft, so we catch any accidental break early.
+
+- [ ] All 21 Phase 5 tests passed
 
 ---
 

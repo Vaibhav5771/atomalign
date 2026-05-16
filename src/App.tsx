@@ -6,6 +6,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { SplashScreen } from "@/components/layout/SplashScreen";
 import { useAuthStore } from "@/stores/authStore";
 import LoginPage from "@/pages/auth/LoginPage";
+import AuthCallbackPage from "@/pages/auth/AuthCallbackPage";
 import EmployeeDashboard from "@/pages/employee/EmployeeDashboard";
 import NewGoalSheetPage from "@/pages/employee/NewGoalSheetPage";
 import GoalSheetPage from "@/pages/employee/GoalSheetPage";
@@ -49,6 +50,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<RootRedirect />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/auth/callback" element={<AuthCallbackPage />} />
 
         {/* Employee */}
         <Route element={<ProtectedRoute allowedRoles={["EMPLOYEE"]} />}>

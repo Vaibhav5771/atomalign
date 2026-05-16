@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { createClient, type Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
+import { syncProfileFromGraph } from "@/lib/graph";
 import type { Profile, UserRole } from "@/types";
 
 export interface AdminCreateUserArgs {
@@ -24,8 +25,10 @@ interface AuthState {
   session: Session | null;
   loading: boolean;
   initialized: boolean;
+  syncing: boolean;
   init: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
+  signInWithMicrosoft: () => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   adminCreateUser: (
@@ -56,6 +59,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   session: null,
   loading: true,
   initialized: false,
+  syncing: false,
 
   init: async () => {
     if (get().initialized) return;
@@ -67,12 +71,26 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
     set({ session, user: profile, loading: false, initialized: true });
 
-    supabase.auth.onAuthStateChange(async (_event, newSession) => {
+    supabase.auth.onAuthStateChange(async (event, newSession) => {
       if (newSession?.user) {
+        const isAzureSignIn =
+          event === "SIGNED_IN" &&
+          newSession.user.app_metadata?.provider === "azure" &&
+          !!newSession.provider_token;
+
+        if (isAzureSignIn) {
+          set({ syncing: true });
+          try {
+            await syncProfileFromGraph(newSession.user.id, newSession.provider_token!);
+          } catch (e) {
+            console.warn("[authStore] graph sync error", e);
+          }
+        }
+
         const p = await fetchProfile(newSession.user.id);
-        set({ session: newSession, user: p });
+        set({ session: newSession, user: p, syncing: false });
       } else {
-        set({ session: null, user: null });
+        set({ session: null, user: null, syncing: false });
       }
     });
   },
@@ -89,6 +107,21 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       profile = await fetchProfile(data.session.user.id);
     }
     set({ session: data.session, user: profile, loading: false });
+    return { error: null };
+  },
+
+  signInWithMicrosoft: async () => {
+    const redirectTo = `${window.location.origin}/auth/callback`;
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "azure",
+      options: {
+        redirectTo,
+        scopes: "openid email profile User.Read offline_access",
+      },
+    });
+    if (error) return { error: error.message };
+    // Browser redirects to Microsoft; the resolved promise above just confirms
+    // the redirect URL was generated. No further action needed here.
     return { error: null };
   },
 
