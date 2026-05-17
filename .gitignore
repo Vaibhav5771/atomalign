@@ -19,6 +19,10 @@ dist-ssr
 
 # Windows alternate-data-stream sidecars created by WSL bridge
 *:Zone.Identifier
+*Zone.Identifier
+
+# Supabase CLI local state (linked-project ref, version cache, etc.)
+supabase/.temp/
 
 # Editor directories and files
 .vscode/*

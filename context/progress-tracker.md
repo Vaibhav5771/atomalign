@@ -1,7 +1,7 @@
 # AtomAlign — Master Progress Tracker
 
 **Last updated:** 2026-05-17
-**Overall completion:** ~99% (Phase 5 bonus code merged on `feature/microsoft-integration` branch · pending Azure/Resend/Teams external config + manual test pass · Vercel env-var blocker still open)
+**Overall completion:** ~99.5% (5.1 SSO live + 5.2 Gmail SMTP notifications live end-to-end · 5.3 escalation planning pending · Vercel env-var blocker still open)
 
 ---
 
@@ -13,9 +13,10 @@
 | Phase 1.5 | Admin user management (bonus) | ✅ Complete | — |
 | Phase 2 — P1 | Quarterly check-ins | ✅ Complete · all 31 tests passed | 20% |
 | Phase 2 — P2 | Reporting & governance | ✅ Complete · all P2 tests passed | 20% |
-| Phase 2 — P3 | Analytics module | ✅ Complete · all P3 tests passed | 10% |
-| Phase 5 — 5.1 | Entra ID SSO + Graph org sync (bonus) | 🔄 Code done · external config + tests pending | — |
-| Phase 5 — 5.2 | Email + Teams notifications (bonus) | 🔄 Code done · external config + tests pending | — |
+| Phase 2 — P3 | Analytics module (BRD §5.4) | ✅ Complete · all P3 tests passed | 10% |
+| Phase 5 — 5.1 | Entra ID SSO + Graph org sync (bonus) | ✅ Live · MS sign-in verified on `vaibhavpardeshi190@gmail.com` | — |
+| Phase 5 — 5.2 | Email notifications via Gmail SMTP (bonus) | ✅ Live · test email received · Teams card code-ready, deferred (no M365 sandbox yet) | — |
+| Phase 5 — 5.3 | Rule-based escalation (bonus) | 🔄 Code built · pending user-actions (migration + function deploys + cron) | — |
 | Deployment & submission | Vercel + docs | 🔄 In progress · blocked on Vercel env vars | 5% |
 
 ---
@@ -293,21 +294,21 @@ Replaces the original "create users by hand in the Supabase Auth dashboard" work
 
 ---
 
-# PHASE 5 — Microsoft Integration (Bonus, BRD §5.1 + §5.2)
-> 🔄 Code merged on `feature/microsoft-integration` · `npm run build` passes (0 TS errors, 2.94s) · external config + manual test pass still pending
+# PHASE 5 — Bonus features (BRD §5.1 + §5.2 + §5.3)
+> 5.1 ✅ live · 5.2 ✅ live (email) / deferred (Teams) · 5.3 📋 planned
 >
-> Full setup guide: [05-microsoft-integration.md](./05-microsoft-integration.md) · Test walkthrough: [05-microsoft-integration-test.md](./05-microsoft-integration-test.md)
+> Setup guide: [05-microsoft-integration.md](./05-microsoft-integration.md) · Test walkthrough: [05-microsoft-integration-test.md](./05-microsoft-integration-test.md)
 
-## 5.1 — Entra ID SSO + Org Hierarchy Sync
+## 5.1 — Entra ID SSO + Org Hierarchy Sync ✅
 
 ### Database
 - [x] `supabase/migrations/0007_microsoft_integration.sql` — adds nullable `profiles.azure_oid` (+ unique partial index) and `profiles.auth_provider`; patches `handle_new_user()` to accept Azure's `name` claim and tag rows with their provider (`email` vs `azure`)
-- [ ] **(user action)** Migration 0007 applied in Supabase SQL Editor
+- [x] **(user action)** Migration 0007 applied in Supabase SQL Editor
 
 ### Azure App Registration & Supabase wiring
-- [ ] **(user action)** Azure App Registration created (multi-tenant; `User.Read` delegated; web redirect = Supabase callback URL)
-- [ ] **(user action)** Supabase → Authentication → Providers → Azure enabled with client ID + secret
-- [ ] **(user action)** Supabase → Authentication → URL Configuration → Redirect URLs include `http://localhost:5174/auth/callback` and `https://atomalign.vercel.app/auth/callback`
+- [x] **(user action)** Azure App Registration created in personal tenant `vaibhavpardeshi190gmail.onmicrosoft.com` ("Any Entra ID Tenant + Personal Microsoft accounts"); `User.Read` delegated; web redirect = `localhost:5174/auth/callback` + Supabase callback
+- [x] **(user action)** Supabase → Authentication → Providers → Azure enabled with client ID + secret; tenant URL = `https://login.microsoftonline.com/common`
+- [x] **(user action)** Supabase → Authentication → URL Configuration → Redirect URLs include `http://localhost:5174/auth/callback` and `https://atomalign.vercel.app/auth/callback`
 
 ### Client code
 - [x] `src/lib/graph.ts` — Microsoft Graph `/me` client with `$expand=manager`; maps `displayName`/`mail`/`department` and resolves `manager_id` by email lookup
@@ -319,12 +320,15 @@ Replaces the original "create users by hand in the Supabase Auth dashboard" work
 - [x] `src/pages/auth/LoginPage.tsx` — "Sign in with Microsoft" button below existing email/password form (additive only, demo logins unchanged)
 - [x] `src/App.tsx` — `/auth/callback` route added
 
-## 5.2 — Email + Teams Notifications
+### Verified end-to-end
+- [x] Microsoft sign-in tested with `vaibhavpardeshi190@gmail.com` → lands on dashboard with `auth_provider=azure`, `azure_oid` populated, `full_name` from Graph
 
-### Edge Function
-- [x] `supabase/functions/notify/index.ts` — accepts `{event, sheet_id, actor_id, remark?, quarter?}`; resolves recipient (manager for employee actions; employee for manager actions); sends Resend email + Adaptive Card to Teams in parallel; CORS-safe; degrades gracefully when either secret is unset
-- [ ] **(user action)** `supabase functions deploy notify --no-verify-jwt` run
-- [ ] **(user action)** Secrets set: `RESEND_API_KEY`, `RESEND_FROM`, `TEAMS_WEBHOOK_URL`, `APP_BASE_URL`
+## 5.2 — Email Notifications (Gmail SMTP) ✅ / Teams card deferred
+
+### Edge Function (deployed)
+- [x] `supabase/functions/notify/index.ts` — uses **Gmail SMTP via [denomailer](https://deno.land/x/denomailer)** (swapped from Resend since Resend sandbox can only deliver to the signup email — Gmail SMTP delivers to any recipient with no domain verification); accepts `{event, sheet_id, actor_id, remark?, quarter?}`; resolves recipient (manager for employee actions; employee for manager actions); sends styled HTML email + Adaptive Card to Teams in parallel; CORS-safe; degrades gracefully when secrets are unset
+- [x] **(user action)** `supabase functions deploy notify` run (JWT verification ON — only signed-in users can invoke)
+- [x] **(user action)** Secrets set: `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `GMAIL_FROM_NAME`, `APP_BASE_URL`
 
 ### Client wrapper
 - [x] `src/lib/notify.ts` — fire-and-forget wrapper around `supabase.functions.invoke('notify')`; logs warnings but never throws; UI is never blocked
@@ -335,15 +339,47 @@ Replaces the original "create users by hand in the Supabase Auth dashboard" work
 - [x] Manager returns sheet → `notify({event: "returned"})` (recipient = employee) — in `managerStore.returnSheet`
 - [x] Employee saves check-in → `notify({event: "checkin_saved"})` (recipient = manager) — in `goalSheetStore.saveCheckIn`
 
+### Verified end-to-end
+- [x] Employee saved check-in → email arrived at `vaibhavpardeshi190@gmail.com` (manager's profile email patched to gmail since `manager@demo.com` is a fake address); subject + body content correct
+- [x] HTML polish redeploy: added explicit UTF-8 charset, removed leading-whitespace artifacts (`=20`), replaced em-dash with hyphen (no more `2€` mojibake)
+
 ### Teams Incoming Webhook
-- [ ] **(user action)** Incoming Webhook (or Power Automate Workflow alternative) created in target Teams channel; URL stored as the `TEAMS_WEBHOOK_URL` secret above
+- Code is ready and will fire when secret is set; deferred because the M365 Developer Program sandbox application is still pending approval (no Teams tenant currently available)
+- [ ] **(user action — when sandbox arrives)** Create Incoming Webhook → `supabase secrets set TEAMS_WEBHOOK_URL=...` → re-test. No code changes needed.
 
 ### Phase 5 Acceptance Tests
 > See the walkthrough in [05-microsoft-integration-test.md](./05-microsoft-integration-test.md) (21 numbered tests across Sections 26–30).
 >
 > Section 27 is the regression sweep — runs the 3 demo passwords + admin user-creation BEFORE touching Microsoft, so we catch any accidental break early.
 
-- [ ] All 21 Phase 5 tests passed
+- [x] Core flows verified ad-hoc during build (MS sign-in + email delivery)
+- [ ] Full 21-test sweep not yet run formally — recommend before submission demo
+
+---
+
+## 5.3 — Rule-Based Escalation Module 🔄
+
+> Full design: [05-3-escalation-plan.md](./05-3-escalation-plan.md)
+
+### Status
+
+- [x] `supabase/migrations/0008_escalations.sql` — enums, both tables, RLS, unique dedupe index, 5 seed rules (3-step chain for SUBMIT_OVERDUE)
+- [x] `src/types/index.ts` — `TriggerType`, `EscalateTarget`, `EscalationRule`, `Escalation`, `EscalationWithPeople`, `RunEscalationsResult`
+- [x] `supabase/functions/evaluate-escalations/index.ts` — daily-runnable evaluator; queries 3 trigger types; resolves recipient via chain; idempotent via daily unique index; calls `notify` for each fire
+- [x] `supabase/functions/notify/index.ts` — extended with `event: "escalation"` + optional `recipient_id` + optional `sheet_id` (escalations may not have a sheet)
+- [x] `src/stores/escalationsStore.ts` — `fetchRules`, `createRule`, `updateRule`, `deleteRule`, `fetchLog`, `runNow`, `resolve`
+- [x] `src/pages/admin/EscalationsPage.tsx` — Rules tab (CRUD + activate switch) + Log tab + "Run escalations now" button + create/edit/delete dialogs (single-file pattern matching `AnalyticsDashboard`)
+- [x] `src/components/ui/switch.tsx` — new shadcn Switch primitive (uses `radix-ui` aggregated package)
+- [x] `src/App.tsx` — `/admin/escalations` route added (ADMIN-only)
+- [x] `src/components/layout/Sidebar.tsx` — admin nav link with `AlertTriangle` icon
+- [x] Build: `npm run build` passes (1.55s, 0 TS errors)
+
+### Remaining user actions
+- [ ] **(user action)** Apply migration 0008 in Supabase SQL Editor
+- [ ] **(user action)** `supabase functions deploy notify` (re-deploy with extended payload)
+- [ ] **(user action)** `supabase functions deploy evaluate-escalations`
+- [ ] **(user action)** Supabase Dashboard → Database → Cron → schedule `evaluate-escalations` daily 09:00 UTC (optional — "Run now" button works without it)
+- [ ] **(user action)** Smoke test: backdate a draft sheet 20 days, click "Run now" in `/admin/escalations`, verify log row + email arrives
 
 ---
 

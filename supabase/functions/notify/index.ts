@@ -1,30 +1,33 @@
 // Supabase Edge Function: notify
 //
-// Sends an email (via Resend) and posts an Adaptive Card to Teams (via an
+// Sends an email (via Gmail SMTP) and posts an Adaptive Card to Teams (via an
 // incoming webhook) when a goal lifecycle event happens. Called from the
 // browser as fire-and-forget; never blocks the user flow.
 //
 // Deploy:
-//   supabase functions deploy notify --no-verify-jwt
+//   supabase functions deploy notify
 //
 // Secrets:
-//   supabase secrets set RESEND_API_KEY=...
-//   supabase secrets set RESEND_FROM="AtomAlign <onboarding@resend.dev>"
-//   supabase secrets set TEAMS_WEBHOOK_URL=...   # optional
+//   supabase secrets set GMAIL_USER=you@gmail.com
+//   supabase secrets set GMAIL_APP_PASSWORD=xxxx-xxxx-xxxx-xxxx
+//   supabase secrets set GMAIL_FROM_NAME="AtomAlign Notifications"  # optional
+//   supabase secrets set TEAMS_WEBHOOK_URL=...                       # optional
 //   supabase secrets set APP_BASE_URL=https://atomalign.vercel.app
 //
 // Request body:
 //   { event: "submitted" | "approved" | "returned" | "checkin_saved",
 //     sheet_id: string,
-//     actor_id: string,        // user who triggered the event
+//     actor_id: string,
 //     remark?: string,
 //     quarter?: "Q1"|"Q2"|"Q3"|"Q4" }
 
 // deno-lint-ignore-file no-explicit-any
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
 
-const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
-const RESEND_FROM = Deno.env.get("RESEND_FROM") ?? "AtomAlign <onboarding@resend.dev>";
+const GMAIL_USER = Deno.env.get("GMAIL_USER") ?? "";
+const GMAIL_APP_PASSWORD = Deno.env.get("GMAIL_APP_PASSWORD") ?? "";
+const GMAIL_FROM_NAME = Deno.env.get("GMAIL_FROM_NAME") ?? "AtomAlign Notifications";
 const TEAMS_WEBHOOK_URL = Deno.env.get("TEAMS_WEBHOOK_URL") ?? "";
 const APP_BASE_URL = Deno.env.get("APP_BASE_URL") ?? "https://atomalign.vercel.app";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -37,12 +40,18 @@ const CORS_HEADERS = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-type EventType = "submitted" | "approved" | "returned" | "checkin_saved";
+type EventType =
+  | "submitted"
+  | "approved"
+  | "returned"
+  | "checkin_saved"
+  | "escalation";
 
 interface Payload {
   event: EventType;
-  sheet_id: string;
+  sheet_id?: string;
   actor_id: string;
+  recipient_id?: string;
   remark?: string;
   quarter?: string;
 }
@@ -59,7 +68,7 @@ interface Context {
   cycleYear: number;
 }
 
-function subjectFor(event: EventType, ctx: Context): string {
+function subjectFor(event: EventType, ctx: Context, payload: Payload): string {
   switch (event) {
     case "submitted":
       return `${ctx.employee.name} submitted goals for your review`;
@@ -69,36 +78,59 @@ function subjectFor(event: EventType, ctx: Context): string {
       return `Your ${ctx.cycleYear} goals need revision`;
     case "checkin_saved":
       return `${ctx.employee.name} logged a check-in`;
+    case "escalation":
+      return `Escalation: action required regarding ${ctx.employee.name}`;
   }
 }
 
 function bodyHtml(event: EventType, ctx: Context, payload: Payload): string {
-  const link = `<a href="${ctx.sheetUrl}">Open goal sheet</a>`;
+  const link = `<a href="${ctx.sheetUrl}" style="display:inline-block;padding:10px 18px;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px;font-weight:600">Open goal sheet</a>`;
+  const wrap = (inner: string) =>
+    `<!DOCTYPE html><html><head><meta charset="utf-8"><title>AtomAlign</title></head><body style="margin:0;padding:0;background:#f8fafc"><div style="font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#0f172a;max-width:560px;margin:0 auto;padding:24px;background:#ffffff"><h2 style="margin:0 0 16px;font-size:20px;color:#0f172a">${subjectFor(event, ctx, payload)}</h2>${inner}<p style="margin:24px 0 16px">${link}</p><hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0"><p style="font-size:12px;color:#64748b;margin:0">Sent by AtomAlign - Goal Setting &amp; Tracking Portal</p></div></body></html>`;
   switch (event) {
     case "submitted":
-      return `
-        <p>Hi ${ctx.manager?.name ?? "there"},</p>
-        <p><strong>${ctx.employee.name}</strong> submitted their ${ctx.cycleYear} goals for your review.</p>
-        <p>${link}</p>`;
+      return wrap(
+        `<p>Hi ${ctx.manager?.name ?? "there"},</p><p><strong>${ctx.employee.name}</strong> submitted their ${ctx.cycleYear} goals for your review.</p>`,
+      );
     case "approved":
-      return `
-        <p>Hi ${ctx.employee.name},</p>
-        <p>Your ${ctx.cycleYear} goals have been approved${
+      return wrap(
+        `<p>Hi ${ctx.employee.name},</p><p>Your ${ctx.cycleYear} goals have been approved${
           payload.remark ? `. Manager note: <em>${payload.remark}</em>` : ""
-        }.</p>
-        <p>${link}</p>`;
+        }.</p>`,
+      );
     case "returned":
-      return `
-        <p>Hi ${ctx.employee.name},</p>
-        <p>Your ${ctx.cycleYear} goals were returned for revision${
+      return wrap(
+        `<p>Hi ${ctx.employee.name},</p><p>Your ${ctx.cycleYear} goals were returned for revision${
           payload.remark ? `: <em>${payload.remark}</em>` : ""
-        }.</p>
-        <p>${link}</p>`;
+        }.</p>`,
+      );
     case "checkin_saved":
-      return `
-        <p>Hi ${ctx.manager?.name ?? "there"},</p>
-        <p><strong>${ctx.employee.name}</strong> logged a ${payload.quarter ?? ""} check-in.</p>
-        <p>${link}</p>`;
+      return wrap(
+        `<p>Hi ${ctx.manager?.name ?? "there"},</p><p><strong>${ctx.employee.name}</strong> logged a ${payload.quarter ?? ""} check-in.</p>`,
+      );
+    case "escalation":
+      return wrap(
+        `<p>This is an automated escalation from AtomAlign.</p><p><strong>Subject:</strong> ${ctx.employee.name}${ctx.employee.email ? ` (${ctx.employee.email})` : ""}</p><p><strong>Reason:</strong> ${payload.remark ?? "Action required."}</p><p>Please follow up to keep the ${ctx.cycleYear} goal cycle on track.</p>`,
+      );
+  }
+}
+
+function bodyText(event: EventType, ctx: Context, payload: Payload): string {
+  switch (event) {
+    case "submitted":
+      return `${ctx.employee.name} submitted their ${ctx.cycleYear} goals for your review.\n\nOpen: ${ctx.sheetUrl}`;
+    case "approved":
+      return `Your ${ctx.cycleYear} goals have been approved${
+        payload.remark ? `. Manager note: ${payload.remark}` : ""
+      }.\n\nOpen: ${ctx.sheetUrl}`;
+    case "returned":
+      return `Your ${ctx.cycleYear} goals were returned for revision${
+        payload.remark ? `: ${payload.remark}` : ""
+      }.\n\nOpen: ${ctx.sheetUrl}`;
+    case "checkin_saved":
+      return `${ctx.employee.name} logged a ${payload.quarter ?? ""} check-in.\n\nOpen: ${ctx.sheetUrl}`;
+    case "escalation":
+      return `Automated escalation.\n\nSubject: ${ctx.employee.name}${ctx.employee.email ? ` (${ctx.employee.email})` : ""}\nReason: ${payload.remark ?? "Action required."}\n\nOpen: ${ctx.sheetUrl}`;
   }
 }
 
@@ -141,25 +173,46 @@ function teamsCard(event: EventType, ctx: Context, payload: Payload) {
   };
 }
 
-async function sendEmail(to: string, subject: string, html: string) {
-  if (!RESEND_API_KEY) {
-    console.warn("[notify] RESEND_API_KEY not set — skipping email");
-    return { ok: false, reason: "no_api_key" };
+async function sendEmail(
+  to: string,
+  subject: string,
+  html: string,
+  text: string,
+) {
+  if (!GMAIL_USER || !GMAIL_APP_PASSWORD) {
+    console.warn("[notify] GMAIL_USER / GMAIL_APP_PASSWORD not set — skipping email");
+    return { ok: false, reason: "no_credentials" };
   }
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${RESEND_API_KEY}`,
-      "Content-Type": "application/json",
+  const client = new SMTPClient({
+    connection: {
+      hostname: "smtp.gmail.com",
+      port: 465,
+      tls: true,
+      auth: {
+        username: GMAIL_USER,
+        password: GMAIL_APP_PASSWORD,
+      },
     },
-    body: JSON.stringify({ from: RESEND_FROM, to, subject, html }),
   });
-  if (!res.ok) {
-    const text = await res.text();
-    console.warn("[notify] resend failed", res.status, text);
-    return { ok: false, reason: text };
+  try {
+    await client.send({
+      from: `${GMAIL_FROM_NAME} <${GMAIL_USER}>`,
+      to,
+      subject,
+      content: text,
+      html,
+    });
+    return { ok: true };
+  } catch (e) {
+    console.warn("[notify] gmail smtp failed", e);
+    return { ok: false, reason: String(e) };
+  } finally {
+    try {
+      await client.close();
+    } catch {
+      /* noop */
+    }
   }
-  return { ok: true };
 }
 
 async function sendTeams(card: unknown) {
@@ -201,7 +254,7 @@ Deno.serve(async (req) => {
     });
   }
 
-  if (!payload?.event || !payload?.sheet_id || !payload?.actor_id) {
+  if (!payload?.event || !payload?.actor_id) {
     return new Response(JSON.stringify({ error: "missing_fields" }), {
       status: 400,
       headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
@@ -212,51 +265,66 @@ Deno.serve(async (req) => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  // Look up sheet + employee + manager
-  const { data: sheet, error: sheetErr } = await admin
-    .from("goal_sheets")
-    .select("id, employee_id, cycle_year")
-    .eq("id", payload.sheet_id)
-    .single();
-  if (sheetErr || !sheet) {
-    return new Response(
-      JSON.stringify({ error: "sheet_not_found", detail: sheetErr?.message }),
-      { status: 404, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } },
-    );
+  // Look up sheet if provided (optional for escalation events)
+  let sheet: { id: string; employee_id: string; cycle_year: number } | null = null;
+  if (payload.sheet_id) {
+    const { data } = await admin
+      .from("goal_sheets")
+      .select("id, employee_id, cycle_year")
+      .eq("id", payload.sheet_id)
+      .maybeSingle();
+    if (data) sheet = data as any;
   }
 
-  const { data: employee, error: empErr } = await admin
+  // Subject = the person the event is *about*. For sheet-based events that's
+  // the sheet's owner; for escalations it's actor_id.
+  const subjectId = sheet?.employee_id ?? payload.actor_id;
+
+  const { data: subjectProfile, error: subjErr } = await admin
     .from("profiles")
     .select("id, full_name, email, manager_id")
-    .eq("id", sheet.employee_id)
+    .eq("id", subjectId)
     .single();
-  if (empErr || !employee) {
+  if (subjErr || !subjectProfile) {
     return new Response(
-      JSON.stringify({ error: "employee_not_found", detail: empErr?.message }),
+      JSON.stringify({ error: "subject_not_found", detail: subjErr?.message }),
       { status: 404, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } },
     );
   }
 
   let manager: Recipient | null = null;
-  if (employee.manager_id) {
+  if (subjectProfile.manager_id) {
     const { data: m } = await admin
       .from("profiles")
       .select("id, full_name, email")
-      .eq("id", employee.manager_id)
+      .eq("id", subjectProfile.manager_id)
       .single();
     if (m) manager = { name: m.full_name || m.email, email: m.email };
   }
 
   const ctx: Context = {
-    employee: { name: employee.full_name || employee.email, email: employee.email },
+    employee: { name: subjectProfile.full_name || subjectProfile.email, email: subjectProfile.email },
     manager,
     sheetUrl: `${APP_BASE_URL}/employee/goals`,
-    cycleYear: sheet.cycle_year,
+    cycleYear: sheet?.cycle_year ?? new Date().getFullYear(),
   };
 
-  // Recipient routing: employee actions → manager; manager actions → employee.
-  const toEmployee = payload.event === "approved" || payload.event === "returned";
-  const recipient = toEmployee ? ctx.employee : manager;
+  // Recipient routing:
+  //   - explicit recipient_id (escalation flow) → use that profile
+  //   - approved/returned → employee (subject)
+  //   - submitted/checkin_saved → manager
+  let recipient: Recipient | null = null;
+  if (payload.recipient_id) {
+    const { data: r } = await admin
+      .from("profiles")
+      .select("id, full_name, email")
+      .eq("id", payload.recipient_id)
+      .single();
+    if (r) recipient = { name: r.full_name || r.email, email: r.email };
+  } else {
+    const toEmployee = payload.event === "approved" || payload.event === "returned";
+    recipient = toEmployee ? ctx.employee : manager;
+  }
 
   if (!recipient?.email) {
     return new Response(
@@ -265,12 +333,13 @@ Deno.serve(async (req) => {
     );
   }
 
-  const subject = subjectFor(payload.event, ctx);
+  const subject = subjectFor(payload.event, ctx, payload);
   const html = bodyHtml(payload.event, ctx, payload);
+  const text = bodyText(payload.event, ctx, payload);
   const card = teamsCard(payload.event, ctx, payload);
 
   const [emailRes, teamsRes] = await Promise.all([
-    sendEmail(recipient.email, subject, html),
+    sendEmail(recipient.email, subject, html, text),
     sendTeams(card),
   ]);
 

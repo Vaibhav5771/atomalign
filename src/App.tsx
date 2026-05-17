@@ -19,6 +19,7 @@ import SharedGoalsPage from "@/pages/admin/SharedGoalsPage";
 import UsersPage from "@/pages/admin/UsersPage";
 import ReportsPage from "@/pages/admin/ReportsPage";
 import AnalyticsPage from "@/pages/admin/AnalyticsPage";
+import EscalationsPage from "@/pages/admin/EscalationsPage";
 import NotFoundPage from "@/pages/NotFoundPage";
 import type { UserRole } from "@/types";
 
@@ -79,6 +80,7 @@ export default function App() {
             <Route path="/admin/users" element={<UsersPage />} />
             <Route path="/admin/reports" element={<ReportsPage />} />
             <Route path="/admin/analytics" element={<AnalyticsPage />} />
+            <Route path="/admin/escalations" element={<EscalationsPage />} />
           </Route>
         </Route>
 

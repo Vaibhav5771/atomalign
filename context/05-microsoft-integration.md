@@ -55,17 +55,20 @@ Authentication → URL Configuration → add to **Redirect URLs**:
 # from repo root
 supabase login                                  # one-time
 supabase link --project-ref <your-ref>          # one-time
-supabase functions deploy notify --no-verify-jwt
+supabase functions deploy notify
 
-supabase secrets set RESEND_API_KEY=re_xxx
-supabase secrets set RESEND_FROM='AtomAlign <onboarding@resend.dev>'
-supabase secrets set TEAMS_WEBHOOK_URL='https://...office.com/webhookb2/...'
+supabase secrets set GMAIL_USER=you@gmail.com
+supabase secrets set GMAIL_APP_PASSWORD=xxxxxxxxxxxxxxxx
+supabase secrets set GMAIL_FROM_NAME='AtomAlign Notifications'
+supabase secrets set TEAMS_WEBHOOK_URL='https://...office.com/webhookb2/...'   # optional
 supabase secrets set APP_BASE_URL=https://atomalign.vercel.app
 ```
 
 `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are injected by Supabase automatically — do not set them manually.
 
-If you skip `TEAMS_WEBHOOK_URL`, the function still sends email and logs a warning instead of failing. Same for `RESEND_API_KEY`.
+The function uses **Gmail SMTP** via [denomailer](https://deno.land/x/denomailer), so emails come from your Gmail address with the display name set by `GMAIL_FROM_NAME`. Generate an **App Password** at <https://myaccount.google.com/apppasswords> — this requires 2-Step Verification to be enabled on the Google account. Using an App Password is mandatory; Gmail rejects SMTP logins that use your regular account password.
+
+If you skip `TEAMS_WEBHOOK_URL`, the function still sends email and logs a warning instead of failing. Same for `GMAIL_USER` / `GMAIL_APP_PASSWORD`.
 
 ### 5. Teams Incoming Webhook
 
@@ -73,9 +76,13 @@ In your target Teams channel: `…` → Connectors → **Incoming Webhook** → 
 
 If your tenant uses **Power Automate Workflows** instead of Connectors (some tenants have Connectors disabled), use the "Post to a channel when a webhook request is received" template; the URL shape is similar.
 
-### 6. Resend
+### 6. Gmail App Password
 
-[resend.com](https://resend.com) → free tier (100 emails/day, 3000/mo). Onboarding sandbox sender `onboarding@resend.dev` works without domain verification.
+1. <https://myaccount.google.com/security> → enable **2-Step Verification** if you haven't already (mandatory — App Passwords don't work without it).
+2. <https://myaccount.google.com/apppasswords> → name it `AtomAlign` → **Create** → copy the 16-character password (shown once).
+3. Save it as the `GMAIL_APP_PASSWORD` secret in step 4 above.
+
+Gmail's SMTP server (`smtp.gmail.com:465`) allows up to **500 emails/day** for free accounts (2,000 for Workspace). Plenty for a hackathon demo. Sends to any recipient address.
 
 ---
 
