@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   ArrowLeft,
 } from "lucide-react";
-import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/authStore";
 import { notify } from "@/lib/notify";
 import { useToast } from "@/hooks/use-toast";
@@ -27,14 +26,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import type { Profile } from "@/types";
 
@@ -109,6 +100,8 @@ export function CreateTeamWizard({
   const me = useAuthStore((s) => s.user);
   const adminCreateUser = useAuthStore((s) => s.adminCreateUser);
   const updateMyAccount = useAuthStore((s) => s.updateMyAccount);
+  const fetchWorkspaceManagers = useAuthStore((s) => s.fetchWorkspaceManagers);
+  const fetchWorkspaceEmployees = useAuthStore((s) => s.fetchWorkspaceEmployees);
 
   const [step, setStep] = useState<Step>(
     showProfileStep ? "profile" : "managers",
@@ -137,30 +130,111 @@ export function CreateTeamWizard({
     total: number;
   } | null>(null);
   const [allManagers, setAllManagers] = useState<Profile[]>([]);
+  const [managersLoading, setManagersLoading] = useState(false);
+  const [managersError, setManagersError] = useState<string | null>(null);
+  const [allEmployees, setAllEmployees] = useState<Profile[]>([]);
 
   // -- Summary state
   const [created, setCreated] = useState<CreatedUser[]>([]);
 
-  // Load all managers (existing + just-created) when entering employees step
+  const summaryTree = useMemo(() => {
+    type SummaryEmployee = {
+      id: string;
+      full_name: string;
+      email: string;
+      password?: string;
+      isNew: boolean;
+    };
+
+    const managerNodes = new Map<
+      string,
+      {
+        mgrName: string;
+        mgrEmail: string;
+        mgrRole: string;
+        mgrPassword?: string;
+        isNew: boolean;
+        employees: SummaryEmployee[];
+      }
+    >();
+
+    // 1. Initialize all existing managers
+    allManagers.forEach((m) => {
+      managerNodes.set(m.email, {
+        mgrName: m.full_name || m.email,
+        mgrEmail: m.email,
+        mgrRole: m.role || "MANAGER",
+        isNew: false,
+        employees: [],
+      });
+    });
+
+    // 2. Mark newly created managers and attach passwords
+    created
+      .filter((u) => u.role === "MANAGER")
+      .forEach((c) => {
+        if (managerNodes.has(c.email)) {
+          const node = managerNodes.get(c.email)!;
+          node.isNew = true;
+          node.mgrPassword = c.password;
+        }
+      });
+
+    // 3. Attach all employees to their managers
+    allEmployees.forEach((e) => {
+      const mgr = allManagers.find((mx) => mx.id === e.manager_id);
+      const mgrEmail = mgr?.email;
+      if (!mgrEmail || !managerNodes.has(mgrEmail)) return;
+
+      const createdE = created.find((c) => c.email === e.email && c.role === "EMPLOYEE");
+      managerNodes.get(mgrEmail)!.employees.push({
+        id: e.id,
+        full_name: e.full_name || e.email,
+        email: e.email,
+        password: createdE?.password,
+        isNew: !!createdE,
+      });
+    });
+
+    return Array.from(managerNodes.values());
+  }, [created, allManagers, allEmployees]);
+
+  const uniqueManagerDepartments = useMemo(() => {
+    const deps = allManagers
+      .map((m) => m.department?.trim())
+      .filter(Boolean) as string[];
+    return Array.from(new Set(deps));
+  }, [allManagers]);
+
+  // Load all managers when entering managers or employees step
   useEffect(() => {
-    if (step !== "employees") return;
+    if (step !== "employees" && step !== "managers") return;
     void (async () => {
-      const { data } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("role", "MANAGER")
-        .order("full_name", { ascending: true });
-      const list = (data ?? []) as Profile[];
-      setAllManagers(list);
-      const defaultMgr = list[0]?.id ?? "";
-      setEmployees((rows) =>
-        rows.map((r) => ({
-          ...r,
-          manager_id: r.manager_id || defaultMgr,
-        })),
-      );
+      setManagersLoading(true);
+      setManagersError(null);
+      try {
+        const list = await fetchWorkspaceManagers();
+        setAllManagers(list);
+
+        if (step === "employees") {
+          const empList = await fetchWorkspaceEmployees();
+          setAllEmployees(empList);
+        }
+
+        const defaultMgr = list[0]?.id ?? "";
+        setEmployees((rows) =>
+          rows.map((r) => ({
+            ...r,
+            manager_id: r.manager_id || defaultMgr,
+          })),
+        );
+      } catch (err: any) {
+        setManagersError(err.message || String(err));
+      } finally {
+        setManagersLoading(false);
+      }
     })();
-  }, [step]);
+  }, [step, fetchWorkspaceManagers, fetchWorkspaceEmployees]);
 
   // -------------------------------------------------------------------------
   // Step 0 handlers
@@ -238,23 +312,25 @@ export function CreateTeamWizard({
   const onCreateManagers = async () => {
     if (!validateManagerRows(managers)) return;
     setManagersWorking(true);
+    setManagerProgress({ done: 0, total: managers.length });
+
+    const results = await Promise.all(
+      managers.map(async (row) => {
+        const { error, userId } = await adminCreateUser({
+          email: row.email.trim(),
+          password: row.password,
+          full_name: row.full_name.trim(),
+          role: "MANAGER",
+          department: row.department.trim() || null,
+        });
+        return { row, error, userId };
+      }),
+    );
+
     const newlyCreated: CreatedUser[] = [];
-    const next = [...managers];
-    for (let i = 0; i < next.length; i++) {
-      setManagerProgress({ done: i, total: next.length });
-      const row = next[i];
-      const { error, userId } = await adminCreateUser({
-        email: row.email.trim(),
-        password: row.password,
-        full_name: row.full_name.trim(),
-        role: "MANAGER",
-        department: row.department.trim() || null,
-      });
-      if (error || !userId) {
-        next[i] = { ...row, error: error ?? "Unknown error" };
-        continue;
-      }
-      next[i] = { ...row, error: undefined };
+    const next = managers.map((row, i) => {
+      const { error, userId } = results[i];
+      if (error || !userId) return { ...row, error: error ?? "Unknown error" };
       newlyCreated.push({
         id: userId,
         full_name: row.full_name.trim(),
@@ -270,7 +346,9 @@ export function CreateTeamWizard({
           password: row.password,
         });
       }
-    }
+      return { ...row, error: undefined };
+    });
+
     setManagers(next);
     setManagerProgress(null);
     setManagersWorking(false);
@@ -292,7 +370,9 @@ export function CreateTeamWizard({
     } else {
       toast({ title: `${newlyCreated.length} managers created` });
     }
-    setCreated((prev) => [...prev, ...newlyCreated]);
+
+    setCreated((existing) => [...existing, ...newlyCreated]);
+    await fetchWorkspaceManagers(true);
     setStep("employees");
   };
 
@@ -349,26 +429,29 @@ export function CreateTeamWizard({
   const onCreateEmployees = async () => {
     if (!validateEmployeeRows(employees)) return;
     setEmployeesWorking(true);
-    const newlyCreated: CreatedUser[] = [];
-    const next = [...employees];
+    setEmployeeProgress({ done: 0, total: employees.length });
+
     const managerEmailById = new Map<string, string>();
     for (const m of allManagers) managerEmailById.set(m.id, m.email);
-    for (let i = 0; i < next.length; i++) {
-      setEmployeeProgress({ done: i, total: next.length });
-      const row = next[i];
-      const { error, userId } = await adminCreateUser({
-        email: row.email.trim(),
-        password: row.password,
-        full_name: row.full_name.trim(),
-        role: "EMPLOYEE",
-        manager_id: row.manager_id,
-        department: row.department.trim() || null,
-      });
-      if (error || !userId) {
-        next[i] = { ...row, error: error ?? "Unknown error" };
-        continue;
-      }
-      next[i] = { ...row, error: undefined };
+
+    const results = await Promise.all(
+      employees.map(async (row) => {
+        const { error, userId } = await adminCreateUser({
+          email: row.email.trim(),
+          password: row.password,
+          full_name: row.full_name.trim(),
+          role: "EMPLOYEE",
+          manager_id: row.manager_id,
+          department: row.department.trim() || null,
+        });
+        return { row, error, userId };
+      }),
+    );
+
+    const newlyCreated: CreatedUser[] = [];
+    const next = employees.map((row, i) => {
+      const { error, userId } = results[i];
+      if (error || !userId) return { ...row, error: error ?? "Unknown error" };
       newlyCreated.push({
         id: userId,
         full_name: row.full_name.trim(),
@@ -385,7 +468,9 @@ export function CreateTeamWizard({
           password: row.password,
         });
       }
-    }
+      return { ...row, error: undefined };
+    });
+
     setEmployees(next);
     setEmployeeProgress(null);
     setEmployeesWorking(false);
@@ -406,7 +491,9 @@ export function CreateTeamWizard({
     } else {
       toast({ title: `${newlyCreated.length} employees created` });
     }
-    setCreated((prev) => [...prev, ...newlyCreated]);
+
+    setCreated((existing) => [...existing, ...newlyCreated]);
+    await fetchWorkspaceEmployees(true);
     setStep("summary");
   };
 
@@ -542,8 +629,25 @@ export function CreateTeamWizard({
         )}
 
         {step === "managers" && (
-          <div className="space-y-3">
-            {managers.map((row, idx) => (
+          <div className="space-y-4">
+            {allManagers.length > 0 && (
+              <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-4">
+                <h4 className="text-sm font-semibold text-emerald-800 dark:text-emerald-300 mb-2">
+                  Existing Managers ({allManagers.length})
+                </h4>
+                <div className="space-y-1">
+                  {allManagers.map((m) => (
+                    <div key={m.id} className="text-sm flex items-center justify-between text-emerald-700 dark:text-emerald-400">
+                      <span>{m.full_name || m.email}</span>
+                      {m.department && <Badge variant="outline" className="bg-emerald-500/5">{m.department}</Badge>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            <div className="space-y-3">
+              {managers.map((row, idx) => (
               <div
                 key={idx}
                 className="border border-border rounded-md p-3 space-y-3"
@@ -633,12 +737,42 @@ export function CreateTeamWizard({
                 {managers.length}/{MAX_MANAGERS}
               </span>
             </Button>
+            </div>
           </div>
         )}
 
         {step === "employees" && (
-          <div className="space-y-3">
-            {allManagers.length === 0 ? (
+          <div className="space-y-4">
+            {allEmployees.length > 0 && !managersLoading && (
+              <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-4">
+                <h4 className="text-sm font-semibold text-emerald-800 dark:text-emerald-300 mb-2">
+                  Existing Employees ({allEmployees.length})
+                </h4>
+                <div className="space-y-1">
+                  {allEmployees.map((e) => {
+                    const mgr = allManagers.find(m => m.id === e.manager_id);
+                    return (
+                      <div key={e.id} className="text-sm flex flex-col sm:flex-row sm:items-center justify-between text-emerald-700 dark:text-emerald-400 py-1.5 border-b border-emerald-500/10 last:border-0">
+                        <span className="font-medium">{e.full_name || e.email}</span>
+                        {mgr && <span className="text-xs opacity-80 sm:ml-2">Reports to: {mgr.full_name || mgr.email}</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            
+            <div className="space-y-3">
+              {managersLoading ? (
+                <div className="flex items-center justify-center p-8 text-muted-foreground">
+                <Loader2 className="h-6 w-6 animate-spin mr-2" />
+                <span className="text-sm">Loading managers...</span>
+              </div>
+            ) : managersError ? (
+              <div className="text-sm text-destructive p-4 border border-destructive/20 rounded-md bg-destructive/10">
+                Failed to load managers: {managersError}
+              </div>
+            ) : allManagers.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 No managers available. Go back to Step 1 and create at least
                 one manager first.
@@ -708,14 +842,37 @@ export function CreateTeamWizard({
                       </div>
                       <div className="space-y-1">
                         <Label>Department</Label>
-                        <Input
-                          value={row.department}
-                          onChange={(e) =>
-                            setEmployeeField(idx, "department", e.target.value)
-                          }
-                          placeholder="optional"
-                          disabled={employeesWorking}
-                        />
+                        {uniqueManagerDepartments.length > 0 ? (
+                          <Select
+                            value={row.department || "_none"}
+                            onValueChange={(v) => {
+                              setEmployeeField(idx, "department", v === "_none" ? "" : v);
+                              setEmployeeField(idx, "manager_id", "");
+                            }}
+                            disabled={employeesWorking}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Any department" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="_none">None / Any</SelectItem>
+                              {uniqueManagerDepartments.map((d) => (
+                                <SelectItem key={d} value={d}>
+                                  {d}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <Input
+                            value={row.department}
+                            onChange={(e) =>
+                              setEmployeeField(idx, "department", e.target.value)
+                            }
+                            placeholder="optional"
+                            disabled={employeesWorking}
+                          />
+                        )}
                       </div>
                       <div className="space-y-1 col-span-2">
                         <Label>Reports to *</Label>
@@ -730,11 +887,13 @@ export function CreateTeamWizard({
                             <SelectValue placeholder="Pick a manager" />
                           </SelectTrigger>
                           <SelectContent>
-                            {allManagers.map((m) => (
-                              <SelectItem key={m.id} value={m.id}>
-                                {m.full_name || m.email}
-                              </SelectItem>
-                            ))}
+                            {allManagers
+                              .filter((m) => !row.department || m.department === row.department)
+                              .map((m) => (
+                                <SelectItem key={m.id} value={m.id}>
+                                  {m.full_name || m.email} {m.department ? `(${m.department})` : ""}
+                                </SelectItem>
+                              ))}
                           </SelectContent>
                         </Select>
                       </div>
@@ -765,51 +924,72 @@ export function CreateTeamWizard({
                 </Button>
               </>
             )}
+            </div>
           </div>
         )}
 
         {step === "summary" && (
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 text-sm text-emerald-700">
-              <CheckCircle2 className="h-4 w-4" />
-              {created.length} {created.length === 1 ? "user" : "users"} created.
+          <div className="space-y-4">
+            {created.length > 0 && (
+              <div className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 py-3 px-4 rounded-md border border-emerald-200 dark:bg-emerald-500/10 dark:border-emerald-500/20 dark:text-emerald-400">
+                <CheckCircle2 className="h-5 w-5" />
+                Successfully created {created.length} {created.length === 1 ? "user" : "users"}.
+              </div>
+            )}
+            
+            <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
+              <h3 className="font-semibold text-lg text-foreground px-1">Complete Team Hierarchy</h3>
+              {summaryTree.map((node, i) => (
+                <div key={i} className="border border-border rounded-md overflow-hidden bg-muted/20">
+                  <div className="bg-muted/50 p-3 flex flex-col sm:flex-row sm:items-center justify-between border-b border-border gap-2">
+                    <div>
+                      <div className="font-semibold text-sm flex items-center gap-2">
+                        {node.mgrName}
+                        {node.isNew ? (
+                          <Badge variant="secondary" className="text-[10px] h-4 py-0 leading-none">New</Badge>
+                        ) : null}
+                      </div>
+                      <div className="text-xs font-mono text-muted-foreground mt-0.5">{node.mgrEmail}</div>
+                    </div>
+                    {node.isNew && node.mgrPassword && (
+                      <div className="text-xs font-mono font-medium bg-background border border-border px-2 py-1 rounded w-max">
+                        <span className="text-muted-foreground mr-1">Password:</span>
+                        {node.mgrPassword}
+                      </div>
+                    )}
+                  </div>
+                  
+                  {node.employees.length > 0 ? (
+                    <div className="p-3 space-y-2">
+                      <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Direct Reports ({node.employees.length})</div>
+                      <div className="grid gap-2">
+                        {node.employees.map(e => (
+                          <div key={e.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-2.5 rounded-md border border-border bg-background shadow-sm">
+                            <div>
+                              <div className="text-sm font-medium flex items-center gap-2">
+                                {e.full_name}
+                                {e.isNew && <Badge variant="secondary" className="text-[10px] h-4 py-0 leading-none">New</Badge>}
+                              </div>
+                              <div className="text-xs font-mono text-muted-foreground mt-0.5">{e.email}</div>
+                            </div>
+                            {e.isNew && e.password && (
+                              <div className="mt-2 sm:mt-0 text-xs font-mono bg-muted border border-border px-2 py-1 rounded text-foreground">
+                                <span className="text-muted-foreground mr-1">pw:</span>
+                                {e.password}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3 text-xs flex text-muted-foreground italic">
+                      No direct reports assigned.
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Password</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Reports to</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {created.map((u) => (
-                  <TableRow key={u.id}>
-                    <TableCell className="font-medium">
-                      {u.full_name}
-                    </TableCell>
-                    <TableCell className="text-sm font-mono">
-                      {u.email}
-                    </TableCell>
-                    <TableCell className="text-sm font-mono">
-                      {u.password}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={u.role === "MANAGER" ? "secondary" : "outline"}
-                      >
-                        {u.role}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {u.reports_to_email ?? "—"}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
           </div>
         )}
       </div>

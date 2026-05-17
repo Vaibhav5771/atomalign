@@ -1,28 +1,37 @@
 # AtomAlign — Master Progress Tracker
 
-**Last updated:** 2026-05-17 (round 4 + fix-ups)
-**Overall completion:** ~99.9% — all phases done, bonus features 5.1+5.2+5.3+5.4 all live, reviewer-onboarding wizard + welcome emails + MS sign-in lockdown shipped in round 4. Architecture diagram now committed (rendered from SVG). BRD §2.3 quarterly window indicator wired into both check-in pages. Audit trail extended with `USER_CREATED` action. Remaining items are user-side migration/deploy/push/submit actions (see "Loose ends before submission" below).
+**Last updated:** 2026-05-18 (round 5 — latency fixes + deployment finalised)
+**Overall completion:** ~99.95% — all phases done, Netlify deployment live, UptimeRobot warm-ping active, Supabase cold-start polling fixed, CreateTeamWizard parallelised. Remaining items: key rotation, smoke test, submission form.
 
 ---
 
-## Loose ends before submission (2026-05-18 08:00)
+## Loose ends before submission (2026-05-19 10:00)
 
-Status as of round-4 build (TS 0 errors, Vite built 2.98s).
+Status as of round-5 build.
 
 | # | Item | Type | Status |
 |---|---|---|---|
-| 1 | Apply migration `0008_escalations.sql` in Supabase SQL Editor | user action | ⬜ |
-| 2 | Apply migration `0009_restrict_azure_signup.sql` in Supabase SQL Editor | user action | ⬜ |
-| 3 | `supabase functions deploy notify` (picks up `event: 'user_created'` welcome email + extended escalation payload) | user action | ⬜ |
-| 4 | `supabase functions deploy evaluate-escalations` (if 5.3 will be demoed) | user action | ⬜ |
-| 5 | Commit + push round-4 changes to `Vaibhav5771/atomalign` `main` | git | ⬜ |
+| 1 | Apply migration `0008_escalations.sql` in Supabase SQL Editor | user action | ✅ |
+| 2 | Apply migration `0009_restrict_azure_signup.sql` in Supabase SQL Editor | user action | ✅ |
+| 2b | Apply migration `0011_update_my_account_immediate.sql` in SQL Editor | user action | ⬜ |
+| 3 | `supabase functions deploy notify` (picks up `event: 'user_created'` welcome email + extended escalation payload) | user action | ✅ |
+| 4 | `supabase functions deploy evaluate-escalations` (if 5.3 will be demoed) | user action | ✅ |
+| 5 | Commit + push round-4 changes to `Vaibhav5771/atomalign` `main` | git | ✅ |
 | 6 | ~~Architecture diagram~~ — `context/architecture.png` (rendered via cairosvg from `context/architecture.svg`) | submission deliverable | ✅ |
-| 7 | Rotate Supabase publishable key (still in git history at `18519e8`) + update `.env` + Vercel env vars + redeploy | security | ⬜ |
-| 8 | Smoke test the round-4 wizard on the live Vercel URL with throwaway emails | QA | ⬜ |
-| 9 | Fill submission form (live URL · repo · diagram · creds doc) | submission deliverable | ⬜ |
+| 7 | Netlify migration (from Vercel) · Supabase Auth URLs updated · UptimeRobot warm-ping configured | deployment | ✅ |
+| 8 | Fix `adminCreateUser` polling loop (600ms wait + 1 retry) — `src/stores/authStore.ts` | perf fix | ✅ |
+| 9 | Parallelise `CreateTeamWizard` manager + employee creation with `Promise.all` — `src/components/admin/CreateTeamWizard.tsx` | perf fix | ✅ |
+| 9b | Cache wizard user lists (`workspaceManagers`, `workspaceEmployees`) in Zustand. Show complete team tree in step 4 summary. | perf/UX fix | ✅ |
+| 10 | `npx tsc -b --noEmit && npm run build` — verify 0 errors after round-5 changes | QA | ⬜ |
+| 11 | Commit + push round-5 latency fixes to `main` + Netlify auto-redeploy | git | ⬜ |
+| 12 | Apply for Supabase Hackathon Pro trial (removes instance pause permanently) | optional perf | ⬜ |
+| 13 | Rotate Supabase publishable key + update `.env` + Netlify env vars + redeploy | security | ⬜ |
+| 14 | Smoke test the full wizard on `https://atomalignv.netlify.app` (3 role journeys) | QA | ⬜ |
+| 15 | Fill submission form (live URL · repo · diagram · creds doc) | submission | ⬜ |
 
-**Hard blockers** (must be done before judges click anything): #2, #3, #5, #9.
-**Strongly recommended** (security and bonus credit): #1, #4, #7, #8.
+**Hard blockers**: ~~#2, #3, #5~~ ✅ · #2b, #15 remaining.
+**Must do before submit**: #2b, #10, #11, #13, #14.
+**Strongly recommended**: #12.
 
 ---
 
@@ -52,7 +61,7 @@ Status as of round-4 build (TS 0 errors, Vite built 2.98s).
 | 5.3 | Rule-based escalation with chain | `EscalationsPage` + `evaluate-escalations` Edge Function + 3-step SUBMIT_OVERDUE chain seeded | ✅ |
 | 5.3 | Escalation log visible to admin/HR | "Log" tab in `EscalationsPage` | ✅ |
 | 5.4 | QoQ trends · distribution · team completion · manager effectiveness | `AnalyticsDashboard` (4 charts) | ✅ |
-| 7 | Web-browser accessible, version-controlled, architecture diagram | Vercel + GitHub repo · architecture diagram ⬜ | ⚠️ Diagram pending |
+| 7 | Web-browser accessible, version-controlled, architecture diagram | Netlify (`https://atomalignv.netlify.app`) + GitHub repo · architecture diagram ✅ | ✅ |
 | 8 | Login credentials of 3 roles **or option to switch journeys** | Demo creds doc + round-4 "Create Team" wizard so judges can spin up their own isolated team. Best of both | ✅ |
 
 ---
@@ -71,7 +80,16 @@ Status as of round-4 build (TS 0 errors, Vite built 2.98s).
 | Phase 5 — 5.3 | Rule-based escalation (bonus) | ✅ Live · 4 escalations fired end-to-end · emails received at atomberg + 190 | — |
 | Round-3 UX hardening (2026-05-17 AM) | GoalForm + WeightageBar + CheckInForm fixes | ✅ Done · TS 0 errors, build 1.73s | — |
 | Round-4 reviewer onboarding (2026-05-17 PM) | Create Team wizard · admin profile self-edit · welcome emails · MS sign-in lockdown | ✅ Done · TS 0 errors, build 2.98s | — |
-| Deployment & submission | Vercel + docs | 🔄 In progress · live URL green; diagram + key rotation + submission form pending | 5% |
+| Deployment & submission | Netlify (`https://atomalignv.netlify.app`) + docs | 🔄 In progress · migrated from Vercel to Netlify ✅ · Supabase Auth URLs updated ✅ · UptimeRobot warm-ping configured ✅ · key rotation + submission form pending | 5% |
+
+---
+
+## Round-5 fix log (2026-05-18 — performance and caching)
+
+Goal: close remaining UI confusions during admin onboarding flow, and remove duplicated database lookups when navigating between wizard steps.
+
+- [x] `src/stores/authStore.ts` — Added `workspaceManagers` and `workspaceEmployees` Zustand cache + fetching logic to ensure data remains persistent and fetched once, skipping repeated DB hits when jumping between tabs.
+- [x] `src/components/admin/CreateTeamWizard.tsx` — Rebuilt fetching mechanism to utilize Zustand. Redesigned Employee tab to show "Existing Employees (N)" at the top. Overhauled the final Summary tab to render the "Complete Team Hierarchy", parsing all relationships so users can see the whole existing org tree (and any plaintext passwords generated for newly created users), even if they skipped adding new users inside the flow.
 
 ---
 
@@ -91,15 +109,15 @@ Goal: close the two open loops for tomorrow's submission demo — (a) make it tr
 - [x] `npm run build` — 0 TS errors, Vite built in 2.98s (bundle 1,507kB / 444kB gzipped, ~60kB delta from round 3)
 
 ### Pending user actions for round-4
-- [ ] Apply migration `0009_restrict_azure_signup.sql` in Supabase SQL Editor
-- [ ] `supabase functions deploy notify` (re-deploy with the new `user_created` event)
-- [ ] Commit + push round-4 changes to `main`
+- [x] Apply migration `0009_restrict_azure_signup.sql` in Supabase SQL Editor
+- [x] `supabase functions deploy notify` (re-deploy with the new `user_created` event)
+- [x] Commit + push round-4 changes to `main`
 - [ ] Live-URL smoke test: log in as `admin@demo.com / Demo@1234` in incognito → wizard auto-opens on `/admin/dashboard` Step 0 → change name/email/password → Step 1 add 2 managers (real Gmail) → Step 2 add 3 employees → confirm 5 welcome emails arrive → sign in as new manager → approve a goal sheet → confirm email cascade
 
 ### Round-4 fix-ups (2026-05-17 late PM)
 Goal: close the remaining BRD gaps and deliver the submission's architecture diagram from code (so it ships in this commit, not as a separate manual action).
 
-- [x] **Architecture diagram** — `context/architecture.svg` written by hand, rendered to `context/architecture.png` (2560px wide, 366 KB) via `cairosvg`. Three-layer layout per `architecture-spec.md`: Users → Vercel SPA → Supabase (Auth/Postgres/Edge Functions) with side annotations for Security boundary + External integrations
+- [x] **Architecture diagram** — `context/architecture.svg` written by hand, rendered to `context/architecture.png` (2560px wide, 366 KB) via `cairosvg`. Three-layer layout per `architecture-spec.md`: Users → Netlify SPA → Supabase (Auth/Postgres/Edge Functions) with side annotations for Security boundary + External integrations
 - [x] **BRD §2.3 quarterly window indicator** — `cyclePhase()` helper in `lib/utils.ts` returns the BRD-correct open window for today's date (May→Goal-Setting, Jul–Sep→Q1, Oct–Dec→Q2, Jan–Feb→Q3, Mar–Apr→Q4). New `CyclePhaseBanner` component is mounted on both `CheckInsPage` and `ManagerCheckInsPage`. Soft indicator — does not hard-block saves so the demo still works in May
 - [x] **Audit trail extended** — `adminCreateUser` now writes a `USER_CREATED` row to `audit_logs` per wizard-created user (captures email/role/full_name/manager_id/department in `new_value`). Visible to admins via `/admin/reports` → Audit tab
 - [x] **AuthCallbackPage error surface** — parses `error_description` from the OAuth redirect hash so a rejected MS sign-in (migration 0009) shows a friendly card with "ask admin to add you via the wizard" + Back-to-login button, instead of looping on the splash screen
@@ -406,7 +424,7 @@ Replaces the original "create users by hand in the Supabase Auth dashboard" work
 ### Azure App Registration & Supabase wiring
 - [x] **(user action)** Azure App Registration created in personal tenant `vaibhavpardeshi190gmail.onmicrosoft.com` ("Any Entra ID Tenant + Personal Microsoft accounts"); `User.Read` delegated; web redirect = `localhost:5174/auth/callback` + Supabase callback
 - [x] **(user action)** Supabase → Authentication → Providers → Azure enabled with client ID + secret; tenant URL = `https://login.microsoftonline.com/common`
-- [x] **(user action)** Supabase → Authentication → URL Configuration → Redirect URLs include `http://localhost:5174/auth/callback` and `https://atomalign.vercel.app/auth/callback`
+- [x] **(user action)** Supabase → Authentication → URL Configuration → Redirect URLs include `http://localhost:5174/auth/callback` and `https://atomalignv.netlify.app/auth/callback` *(updated from Vercel → Netlify)*
 
 ### Client code
 - [x] `src/lib/graph.ts` — Microsoft Graph `/me` client with `$expand=manager`; maps `displayName`/`mail`/`department` and resolves `manager_id` by email lookup
@@ -473,9 +491,9 @@ Replaces the original "create users by hand in the Supabase Auth dashboard" work
 - [x] Build: `npm run build` passes (1.55s, 0 TS errors)
 
 ### Remaining user actions
-- [ ] **(user action)** Apply migration 0008 in Supabase SQL Editor
-- [ ] **(user action)** `supabase functions deploy notify` (re-deploy with extended payload)
-- [ ] **(user action)** `supabase functions deploy evaluate-escalations`
+- [x] **(user action)** Apply migration 0008 in Supabase SQL Editor
+- [x] **(user action)** `supabase functions deploy notify` (re-deploy with extended payload)
+- [x] **(user action)** `supabase functions deploy evaluate-escalations`
 - [ ] **(user action)** Supabase Dashboard → Database → Cron → schedule `evaluate-escalations` daily 09:00 UTC (optional — "Run now" button works without it)
 - [ ] **(user action)** Smoke test: backdate a draft sheet 20 days, click "Run now" in `/admin/escalations`, verify log row + email arrives
 
@@ -492,24 +510,18 @@ Replaces the original "create users by hand in the Supabase Auth dashboard" work
 - [x] **GitHub repo pushed** — `Vaibhav5771/atomalign` on `main`, commit `2612c6a Add Phase 1.5 admin user mgmt, Phase 2 (check-ins, reports, analytics), deployment prep`. All 6 migrations now in repo; 11 new pages/components added; .env untracked (gitignored)
 - [x] **README replaced** — boilerplate gone, proper project overview + setup steps + hackathon mapping
 - [x] **Login credentials doc** — [context/demo-credentials.md](./demo-credentials.md) drafted with 3 demo users + happy-path walk-through
-- [x] **App deployed to Vercel** — first build live at https://atomalign.vercel.app/login (Phase 1 only) · second build at commit `2612c6a` is broken (env var issue, see below)
-- [x] **Supabase Auth URL config** — Site URL + Redirect URLs set to the Vercel domain
-
-## Blocker (resume here)
-
-- ⚠️ **Vercel env vars not reaching the Production build.** Diagnosis: downloaded the live bundle, searched for `https://*.supabase.co` and `eyJ...` (publishable JWT prefix) — both absent. Vite saw empty values at build time and baked the "Missing Supabase env vars" throw into the bundle.
-- **Symptom in browser:** `Uncaught Error: Missing Supabase env vars. Set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY in .env` at `index-k7IyKfg0.js`
-- **Tried so far:** added env vars in Vercel (initially only Preview), then re-ticked Production. Redeploy ran but only 26s (cache hit). Nuclear reset (delete + re-add both env vars with all 3 environment checkboxes ticked) was started — user reports "done" but the force-redeploy commit `241eb4d` hasn't been pushed yet.
-- **Local commit waiting to be pushed:** `241eb4d Force Vercel redeploy to pick up env vars` (empty commit, ahead of origin/main by 1).
+- [x] **App migrated from Vercel → Netlify** — live at **https://atomalignv.netlify.app/login** · `netlify.toml` present · SPA fallback `/*` → `/index.html` configured · env vars (`VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`) set in Netlify dashboard
+- [x] **Supabase Auth URL config** — Site URL + Redirect URLs updated to Netlify domain (`https://atomalignv.netlify.app/auth/callback`) ✅
+- [x] **UptimeRobot warm-ping** — free monitor pinging `https://atomalignv.netlify.app/login` every 10 min to prevent Supabase free-tier cold starts ✅
 
 ## Remaining tasks (5)
 
-- [ ] **1. Push empty commit `241eb4d`** to force a fresh Vercel build that picks up the re-added env vars. Push via VSCode sync arrow or terminal. Watch the resulting Vercel build — duration should be 60–120s (a sub-30s build means cache is still winning).
+- [x] **1. Netlify deployment live** — `https://atomalignv.netlify.app/login` is the canonical live URL. Vercel deployment abandoned.
 - [ ] **2. Live-URL smoke test for all 3 role journeys** — once the redeploy is green, run the minimal sweep documented in [deployment.md](./deployment.md) section 3:
   - Employee: login → Dashboard / My Goals / **My Check-ins** sidebar items
   - Manager: login → Dashboard / **Team Check-ins** sidebar
   - Admin: login → Dashboard / Shared Goals / **Users / Reports / Analytics** sidebar; click each
   - DevTools console clear on every page
 - [ ] **3. Draw architecture.png** — use the layout in [context/architecture-spec.md](./architecture-spec.md), open Excalidraw, follow the 10-step recipe at the bottom, export PNG to `context/architecture.png`, link from README.
-- [ ] **4. Rotate Supabase publishable key (Option B from chat)** — the publishable key still in git history at commit `18519e8 Implement  Phase 1`. Supabase Dashboard → Settings → API → rotate publishable (anon) key → update local `.env` AND Vercel env vars AND trigger a redeploy. Do this **before** filling the submission form.
+- [ ] **4. Rotate Supabase publishable key (Option B from chat)** — the publishable key still in git history at commit `18519e8 Implement  Phase 1`. Supabase Dashboard → Settings → API → rotate publishable (anon) key → update local `.env` AND Netlify env vars → trigger a redeploy. Do this **before** filling the submission form.
 - [ ] **5. Fill submission form** — live URL · repo link · architecture diagram link · demo credentials doc link. Deadline 2026-05-18 08:00.

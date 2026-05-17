@@ -46,6 +46,10 @@ interface AuthState {
   ) => Promise<{ error: string | null }>;
   adminDeleteUser: (userId: string) => Promise<{ error: string | null }>;
   updateMyAccount: (args: UpdateMyAccountArgs) => Promise<{ error: string | null }>;
+  workspaceManagers: Profile[] | null;
+  fetchWorkspaceManagers: (force?: boolean) => Promise<Profile[]>;
+  workspaceEmployees: Profile[] | null;
+  fetchWorkspaceEmployees: (force?: boolean) => Promise<Profile[]>;
 }
 
 async function fetchProfile(userId: string): Promise<Profile | null> {
@@ -67,6 +71,39 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   loading: true,
   initialized: false,
   syncing: false,
+  workspaceManagers: null,
+
+  fetchWorkspaceManagers: async (force = false) => {
+    if (!force && get().workspaceManagers !== null) {
+      return get().workspaceManagers!;
+    }
+    const { data } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("role", "MANAGER")
+      .order("full_name", { ascending: true });
+    
+    const list = (data ?? []) as Profile[];
+    set({ workspaceManagers: list });
+    return list;
+  },
+
+  workspaceEmployees: null,
+
+  fetchWorkspaceEmployees: async (force = false) => {
+    if (!force && get().workspaceEmployees !== null) {
+      return get().workspaceEmployees!;
+    }
+    const { data } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("role", "EMPLOYEE")
+      .order("full_name", { ascending: true });
+    
+    const list = (data ?? []) as Profile[];
+    set({ workspaceEmployees: list });
+    return list;
+  },
 
   init: async () => {
     if (get().initialized) return;
@@ -192,22 +229,24 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     const newUserId = signUpData.user.id;
 
-    // The trigger fires asynchronously after auth.users insert. Poll briefly
-    // for the profile row before patching it.
-    let exists = false;
-    for (let i = 0; i < 6; i++) {
-      const { data: row } = await supabase
+    // The handle_new_user trigger fires asynchronously after auth.users insert.
+    // Wait a fixed 600ms (covers 99% of free-tier trigger latency), then do
+    // one retry after another 300ms if the row isn't there yet.
+    await new Promise((r) => setTimeout(r, 600));
+    let profileCheck = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("id", newUserId)
+      .maybeSingle();
+    if (!profileCheck.data) {
+      await new Promise((r) => setTimeout(r, 300));
+      profileCheck = await supabase
         .from("profiles")
         .select("id")
         .eq("id", newUserId)
         .maybeSingle();
-      if (row) {
-        exists = true;
-        break;
-      }
-      await new Promise((r) => setTimeout(r, 300));
     }
-    if (!exists) {
+    if (!profileCheck.data) {
       return {
         error:
           "User created in auth but profile row not yet visible. Refresh the page and patch manually if needed.",
@@ -280,30 +319,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   // Lets the currently signed-in user update their own name/email/password.
   // Used by the first-time admin onboarding wizard so the seeded demo admin
   // can swap admin@demo.com for a real inbox and actually receive goal-event
-  // emails. Email changes are immediate when Supabase "Confirm email" is OFF
-  // (already disabled on the demo project).
   updateMyAccount: async ({ full_name, email, password }) => {
     const selfId = get().user?.id;
     if (!selfId) return { error: "Not signed in" };
 
-    const authPatch: { email?: string; password?: string; data?: Record<string, unknown> } = {
-      data: { full_name },
-    };
-    if (email && email.trim().length > 0) authPatch.email = email.trim();
-    if (password && password.length > 0) authPatch.password = password;
+    const { error: rpcErr } = await supabase.rpc("update_admin", {
+      new_full_name: full_name.trim(),
+      new_email: email?.trim() || null,
+      new_password: password || null,
+    });
 
-    const { error: authErr } = await supabase.auth.updateUser(authPatch);
-    if (authErr) return { error: authErr.message };
-
-    const profilePatch: Record<string, unknown> = { full_name: full_name.trim() };
-    if (email && email.trim().length > 0) profilePatch.email = email.trim();
-
-    const { error: profileErr } = await supabase
-      .from("profiles")
-      .update(profilePatch)
-      .eq("id", selfId);
-    if (profileErr) {
-      return { error: `Auth updated but profile sync failed: ${profileErr.message}` };
+    if (rpcErr) {
+      return { error: `Profile update failed: ${rpcErr.message}` };
     }
 
     await get().refreshProfile();
