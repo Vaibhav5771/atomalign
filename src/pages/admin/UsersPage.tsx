@@ -131,7 +131,7 @@ export default function UsersPage() {
       password: values.password,
       full_name: values.full_name.trim(),
       role: values.role,
-      manager_id: values.role === "EMPLOYEE" ? values.manager_id || null : null,
+      manager_id: values.manager_id || null,
       department: values.department?.trim() || null,
     });
     setSubmitting(false);
@@ -248,34 +248,32 @@ export default function UsersPage() {
                   placeholder="e.g. Sales, Engineering"
                 />
               </div>
-              {role === "EMPLOYEE" && (
-                <div className="space-y-1">
-                  <Label htmlFor="manager_id">Reporting manager (optional)</Label>
-                  <Select
-                    value={managerId ?? ""}
-                    onValueChange={(v) =>
-                      setValue("manager_id", v, { shouldValidate: true })
-                    }
-                  >
-                    <SelectTrigger id="manager_id">
-                      <SelectValue placeholder="No manager" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {managers.length === 0 ? (
-                        <SelectItem value="__none__" disabled>
-                          No managers yet — create one first
+              <div className="space-y-1">
+                <Label htmlFor="manager_id">Reporting manager (optional)</Label>
+                <Select
+                  value={managerId ?? ""}
+                  onValueChange={(v) =>
+                    setValue("manager_id", v, { shouldValidate: true })
+                  }
+                >
+                  <SelectTrigger id="manager_id">
+                    <SelectValue placeholder="No manager" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {managers.length === 0 ? (
+                      <SelectItem value="__none__" disabled>
+                        No managers yet — create one first
+                      </SelectItem>
+                    ) : (
+                      managers.map((m) => (
+                        <SelectItem key={m.id} value={m.id}>
+                          {m.full_name || m.email}
                         </SelectItem>
-                      ) : (
-                        managers.map((m) => (
-                          <SelectItem key={m.id} value={m.id}>
-                            {m.full_name || m.email}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             <div className="flex justify-end pt-1">
@@ -456,8 +454,7 @@ function EditUserDialog({ user, managers, onClose, onSaved }: EditDialogProps) {
     };
     if (!isAdminTarget) {
       patch.role = values.role;
-      patch.manager_id =
-        values.role === "EMPLOYEE" ? values.manager_id || null : null;
+      patch.manager_id = values.manager_id || null;
     }
 
     const { error } = await adminUpdateUser(user.id, patch);
@@ -524,7 +521,7 @@ function EditUserDialog({ user, managers, onClose, onSaved }: EditDialogProps) {
             <Input id="edit_department" {...register("department")} placeholder="—" />
           </div>
 
-          {!isAdminTarget && role === "EMPLOYEE" && (
+          {!isAdminTarget && (
             <div className="space-y-1">
               <Label htmlFor="edit_manager_id">Reporting manager</Label>
               <Select

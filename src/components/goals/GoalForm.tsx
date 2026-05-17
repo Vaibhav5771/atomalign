@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -15,20 +16,53 @@ import {
 } from "@/components/ui/select";
 import type { Goal, GoalDraft, ScoreDirection, UoMType } from "@/types";
 
-const schema = z.object({
-  thrust_area: z.string().min(1, "Required"),
-  title: z.string().min(1, "Required"),
-  description: z.string().optional(),
-  uom: z.enum(["NUMERIC", "PERCENT", "TIMELINE", "ZERO"]),
-  direction: z.enum(["HIGHER", "LOWER"]),
-  target: z.string().min(1, "Required"),
-  target_date: z.string().optional(),
-  weightage: z
-    .number({ message: "Whole numbers only" })
-    .int("Whole numbers only")
-    .min(10, "Minimum 10%")
-    .max(100, "Maximum 100%"),
-});
+const schema = z
+  .object({
+    thrust_area: z.string().min(1, "Required"),
+    title: z.string().min(1, "Required"),
+    description: z.string().optional(),
+    uom: z.enum(["NUMERIC", "PERCENT", "TIMELINE", "ZERO"]),
+    direction: z.enum(["HIGHER", "LOWER"]),
+    target: z.string().min(1, "Required"),
+    target_date: z.string().optional(),
+    weightage: z
+      .number({ message: "Whole numbers only" })
+      .int("Whole numbers only")
+      .min(10, "Minimum 10%")
+      .max(100, "Maximum 100%"),
+  })
+  .superRefine((data, ctx) => {
+    // TIMELINE goals MUST have a target_date — the score depends on it.
+    if (data.uom === "TIMELINE" && !data.target_date?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["target_date"],
+        message: "Target date is required for Timeline goals",
+      });
+    }
+    // NUMERIC / PERCENT targets must parse as a positive number.
+    if (data.uom === "NUMERIC" || data.uom === "PERCENT") {
+      const n = Number(data.target);
+      if (Number.isNaN(n) || n <= 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["target"],
+          message: "Target must be a positive number",
+        });
+      }
+    }
+    // PERCENT target should be 0–100.
+    if (data.uom === "PERCENT") {
+      const n = Number(data.target);
+      if (n > 100) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["target"],
+          message: "Percent target cannot exceed 100",
+        });
+      }
+    }
+  });
 
 type FormValues = z.infer<typeof schema>;
 
@@ -38,6 +72,20 @@ interface Props {
   onCancel: () => void;
   submitLabel?: string;
 }
+
+const TARGET_HINTS: Record<UoMType, string> = {
+  NUMERIC: "Enter a number — e.g. 50000000 for ₹5 Cr, 200 for units sold",
+  PERCENT: "Enter a percent — e.g. 95 for 95% completion (no % sign)",
+  TIMELINE: "Set the target date below — text Target field is auto-managed",
+  ZERO: "Target is fixed at 0 — Zero-based goals succeed only when actual = 0",
+};
+
+const TARGET_PLACEHOLDER: Record<UoMType, string> = {
+  NUMERIC: "e.g. 50000000",
+  PERCENT: "e.g. 95",
+  TIMELINE: "set the date →",
+  ZERO: "0",
+};
 
 export function GoalForm({ initial, onSubmit, onCancel, submitLabel = "Add goal" }: Props) {
   const {
@@ -63,6 +111,21 @@ export function GoalForm({ initial, onSubmit, onCancel, submitLabel = "Add goal"
   const uom = watch("uom");
   const direction = watch("direction");
 
+  // Keep the text Target column sensible when UoM switches so users aren't
+  // confused by stale values:
+  //   ZERO     → fixed at "0" (target is implicit)
+  //   TIMELINE → mirrors target_date string (so the row in the list reads well)
+  useEffect(() => {
+    if (uom === "ZERO") setValue("target", "0", { shouldValidate: true });
+  }, [uom, setValue]);
+
+  const targetDateValue = watch("target_date");
+  useEffect(() => {
+    if (uom === "TIMELINE" && targetDateValue) {
+      setValue("target", targetDateValue, { shouldValidate: true });
+    }
+  }, [uom, targetDateValue, setValue]);
+
   const submit = handleSubmit(async (values) => {
     const requiresDirection = values.uom === "NUMERIC" || values.uom === "PERCENT";
     const draft: GoalDraft = {
@@ -81,19 +144,21 @@ export function GoalForm({ initial, onSubmit, onCancel, submitLabel = "Add goal"
   });
 
   const showDirection = uom === "NUMERIC" || uom === "PERCENT";
+  const showTextTarget = uom === "NUMERIC" || uom === "PERCENT";
+  const showDate = uom === "TIMELINE";
 
   return (
     <form onSubmit={submit} className="space-y-3" noValidate>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
-          <Label htmlFor="thrust_area">Thrust area</Label>
+          <Label htmlFor="thrust_area">Thrust area *</Label>
           <Input id="thrust_area" {...register("thrust_area")} placeholder="e.g. Revenue Growth" />
           {errors.thrust_area && (
             <p className="text-xs text-destructive">{errors.thrust_area.message}</p>
           )}
         </div>
         <div className="space-y-1">
-          <Label htmlFor="title">Goal title</Label>
+          <Label htmlFor="title">Goal title *</Label>
           <Input id="title" {...register("title")} placeholder="e.g. Achieve ₹5 Cr revenue" />
           {errors.title && <p className="text-xs text-destructive">{errors.title.message}</p>}
         </div>
@@ -106,7 +171,7 @@ export function GoalForm({ initial, onSubmit, onCancel, submitLabel = "Add goal"
 
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
-          <Label htmlFor="uom">Unit of measure</Label>
+          <Label htmlFor="uom">Unit of measure *</Label>
           <Select
             value={uom}
             onValueChange={(v) => setValue("uom", v as UoMType, { shouldValidate: true })}
@@ -115,36 +180,66 @@ export function GoalForm({ initial, onSubmit, onCancel, submitLabel = "Add goal"
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="NUMERIC">Numeric</SelectItem>
-              <SelectItem value="PERCENT">Percent</SelectItem>
-              <SelectItem value="TIMELINE">Timeline</SelectItem>
-              <SelectItem value="ZERO">Zero target</SelectItem>
+              <SelectItem value="NUMERIC">Numeric (revenue, count, units)</SelectItem>
+              <SelectItem value="PERCENT">Percent (completion %, NPS)</SelectItem>
+              <SelectItem value="TIMELINE">Timeline (deadline-based)</SelectItem>
+              <SelectItem value="ZERO">Zero-based (zero incidents = success)</SelectItem>
             </SelectContent>
           </Select>
+          <p className="text-xs text-muted-foreground">{TARGET_HINTS[uom]}</p>
         </div>
-        <div className="space-y-1">
-          <Label htmlFor="target">Target</Label>
-          <Input id="target" {...register("target")} placeholder="e.g. 50000000" />
-          {errors.target && <p className="text-xs text-destructive">{errors.target.message}</p>}
-        </div>
+
+        {showTextTarget && (
+          <div className="space-y-1">
+            <Label htmlFor="target">Target *</Label>
+            <Input
+              id="target"
+              type="number"
+              inputMode="decimal"
+              step="any"
+              {...register("target")}
+              placeholder={TARGET_PLACEHOLDER[uom]}
+            />
+            {errors.target && <p className="text-xs text-destructive">{errors.target.message}</p>}
+          </div>
+        )}
+
+        {showDate && (
+          <div className="space-y-1">
+            <Label htmlFor="target_date">Target deadline *</Label>
+            <Input id="target_date" type="date" {...register("target_date")} />
+            {errors.target_date && (
+              <p className="text-xs text-destructive">{errors.target_date.message}</p>
+            )}
+          </div>
+        )}
+
+        {uom === "ZERO" && (
+          <div className="space-y-1">
+            <Label htmlFor="target_zero">Target (auto-set)</Label>
+            <Input
+              id="target_zero"
+              value="0"
+              readOnly
+              disabled
+              tabIndex={-1}
+              className="font-mono"
+            />
+            <p className="text-xs text-muted-foreground">
+              Zero-based goals have a fixed target of 0. Check-in scores 100%
+              only when actual = 0, otherwise 0%.
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        {uom === "TIMELINE" && (
-          <div className="space-y-1">
-            <Label htmlFor="target_date">Target date</Label>
-            <Input id="target_date" type="date" {...register("target_date")} />
-          </div>
-        )}
         {showDirection && (
           <div className="space-y-1">
-            <Label>Scoring direction</Label>
+            <Label>Scoring direction *</Label>
             <p className="text-xs text-muted-foreground">
-              How is this goal scored?{" "}
-              <span className="font-medium">Higher is better</span> for metrics
-              you want to grow (revenue, NPS).{" "}
-              <span className="font-medium">Lower is better</span> for metrics
-              you want to shrink (cost, TAT, defects).
+              <span className="font-medium">Higher is better</span> — grow-metrics like revenue, NPS.{" "}
+              <span className="font-medium">Lower is better</span> — shrink-metrics like cost, TAT, defects.
             </p>
             <div className="flex gap-2">
               <Button
@@ -171,11 +266,13 @@ export function GoalForm({ initial, onSubmit, onCancel, submitLabel = "Add goal"
           </div>
         )}
         <div className="space-y-1">
-          <Label htmlFor="weightage">Weightage (%)</Label>
+          <Label htmlFor="weightage">Weightage (%) *</Label>
           <Input
             id="weightage"
             type="number"
             step={1}
+            min={10}
+            max={100}
             inputMode="numeric"
             aria-invalid={!!errors.weightage}
             {...register("weightage", { valueAsNumber: true })}
@@ -183,6 +280,9 @@ export function GoalForm({ initial, onSubmit, onCancel, submitLabel = "Add goal"
           {errors.weightage && (
             <p className="text-xs text-destructive">{errors.weightage.message}</p>
           )}
+          <p className="text-xs text-muted-foreground">
+            Each goal must be at least 10%. All your goals together must add up to exactly 100% before you can submit.
+          </p>
         </div>
       </div>
 

@@ -1,7 +1,7 @@
 # AtomAlign — Master Progress Tracker
 
-**Last updated:** 2026-05-17
-**Overall completion:** ~99.5% (5.1 SSO live + 5.2 Gmail SMTP notifications live end-to-end · 5.3 escalation planning pending · Vercel env-var blocker still open)
+**Last updated:** 2026-05-17 (round 3)
+**Overall completion:** ~99.5% — bonus features 5.1+5.2+5.3 all live · GoalForm/WeightageBar/CheckIn UX hardened on round 3 (see [current-issues.md](./current-issues.md)) · final submission tasks (push/Vercel/key/diagram/form) pending
 
 ---
 
@@ -16,8 +16,20 @@
 | Phase 2 — P3 | Analytics module (BRD §5.4) | ✅ Complete · all P3 tests passed | 10% |
 | Phase 5 — 5.1 | Entra ID SSO + Graph org sync (bonus) | ✅ Live · MS sign-in verified on `vaibhavpardeshi190@gmail.com` | — |
 | Phase 5 — 5.2 | Email notifications via Gmail SMTP (bonus) | ✅ Live · test email received · Teams card code-ready, deferred (no M365 sandbox yet) | — |
-| Phase 5 — 5.3 | Rule-based escalation (bonus) | 🔄 Code built · pending user-actions (migration + function deploys + cron) | — |
+| Phase 5 — 5.3 | Rule-based escalation (bonus) | ✅ Live · 4 escalations fired end-to-end · emails received at atomberg + 190 | — |
+| Round-3 UX hardening (2026-05-17) | GoalForm + WeightageBar + CheckInForm fixes | ✅ Done · TS 0 errors, build 1.73s | — |
 | Deployment & submission | Vercel + docs | 🔄 In progress · blocked on Vercel env vars | 5% |
+
+---
+
+## Round-3 fix log (2026-05-17 PM)
+Detailed log: [current-issues.md](./current-issues.md)
+
+- [x] WeightageBar: solid amber/emerald/rose fills; "Ready to submit" / "Need X% more" copy
+- [x] GoalForm: conditional Target UI per UoM (NUMERIC/PERCENT number input · TIMELINE date-picker only · ZERO disabled "0" Input matching other field styles · ZERO fixed to use real `<Input disabled>` so visual is consistent)
+- [x] GoalForm: zod `superRefine` validation — TIMELINE requires `target_date`, NUMERIC/PERCENT require positive numbers, PERCENT ≤ 100, all required fields marked `*`
+- [x] CheckInForm: per-UoM help text banners explaining TIMELINE single-completion model and ZERO per-quarter incident count
+- [x] Round-2 carryovers also still in: Switch CSS Tailwind 3 syntax fix · Reporting-manager dropdown shown for all non-admin roles · evaluate-escalations forwards user JWT to notify (verify_jwt stays ON)
 
 ---
 

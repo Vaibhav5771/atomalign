@@ -126,6 +126,22 @@ export function CheckInForm({
         {goal.is_shared && <Badge variant="outline">Shared</Badge>}
       </div>
 
+      {goal.uom === "TIMELINE" && (
+        <div className="rounded-md border border-sky-300 bg-sky-50 dark:bg-sky-900/20 px-3 py-2 text-xs text-sky-900 dark:text-sky-100">
+          <span className="font-medium">Timeline goal:</span> set the actual
+          completion date in the quarter you finished. The score compares it
+          against the deadline ({goal.target_date ?? "—"}) — same value across
+          quarters once set. Quarters where work was not yet done can stay empty.
+        </div>
+      )}
+      {goal.uom === "ZERO" && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-xs text-amber-900 dark:text-amber-100">
+          <span className="font-medium">Zero-based goal:</span> enter the count
+          of incidents/defects that occurred during this quarter. Score is 100%
+          only if the count is exactly 0.
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <div className="space-y-1">
           <Label htmlFor={`actual-${goal.id}`}>{actualLabel(goal.uom)}</Label>
