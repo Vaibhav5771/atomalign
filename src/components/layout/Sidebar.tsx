@@ -8,6 +8,7 @@ import {
   UserPlus,
   FileBarChart,
   TrendingUp,
+  AlertTriangle,
 } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 import { cn } from "@/lib/utils";
@@ -34,6 +35,7 @@ const NAV_BY_ROLE: Record<string, NavItem[]> = {
     { to: "/admin/shared-goals", label: "Shared Goals", icon: Share2 },
     { to: "/admin/reports", label: "Reports", icon: FileBarChart },
     { to: "/admin/analytics", label: "Analytics", icon: TrendingUp },
+    { to: "/admin/escalations", label: "Escalations", icon: AlertTriangle },
   ],
 };
 

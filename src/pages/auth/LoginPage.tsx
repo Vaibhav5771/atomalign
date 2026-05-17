@@ -35,7 +35,9 @@ export default function LoginPage() {
   const { toast } = useToast();
   const user = useAuthStore((s) => s.user);
   const signIn = useAuthStore((s) => s.signIn);
+  const signInWithMicrosoft = useAuthStore((s) => s.signInWithMicrosoft);
   const [submitting, setSubmitting] = useState(false);
+  const [msSubmitting, setMsSubmitting] = useState(false);
 
   const {
     register,
@@ -57,6 +59,20 @@ export default function LoginPage() {
       toast({ title: "Sign in failed", description: error, variant: "destructive" });
     }
   });
+
+  const onMicrosoftSignIn = async () => {
+    setMsSubmitting(true);
+    const { error } = await signInWithMicrosoft();
+    if (error) {
+      setMsSubmitting(false);
+      toast({
+        title: "Microsoft sign-in failed",
+        description: error,
+        variant: "destructive",
+      });
+    }
+    // On success the browser is redirected to Microsoft — no further UI work.
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
@@ -86,11 +102,45 @@ export default function LoginPage() {
                 <p className="text-xs text-destructive">{errors.password.message}</p>
               )}
             </div>
-            <Button type="submit" className="w-full" disabled={submitting}>
+            <Button type="submit" className="w-full" disabled={submitting || msSubmitting}>
               {submitting && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
               {submitting ? "Signing in…" : "Sign in"}
             </Button>
           </form>
+
+          <div className="relative my-4">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-background px-2 text-muted-foreground">or</span>
+            </div>
+          </div>
+
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={onMicrosoftSignIn}
+            disabled={submitting || msSubmitting}
+          >
+            {msSubmitting ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <svg
+                className="h-4 w-4 mr-2"
+                viewBox="0 0 21 21"
+                xmlns="http://www.w3.org/2000/svg"
+                aria-hidden="true"
+              >
+                <rect x="1" y="1" width="9" height="9" fill="#f25022" />
+                <rect x="11" y="1" width="9" height="9" fill="#7fba00" />
+                <rect x="1" y="11" width="9" height="9" fill="#00a4ef" />
+                <rect x="11" y="11" width="9" height="9" fill="#ffb900" />
+              </svg>
+            )}
+            {msSubmitting ? "Redirecting…" : "Sign in with Microsoft"}
+          </Button>
         </CardContent>
       </Card>
     </div>

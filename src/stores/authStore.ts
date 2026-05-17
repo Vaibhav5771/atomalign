@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { createClient, type Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
+import { syncProfileFromGraph } from "@/lib/graph";
 import type { Profile, UserRole } from "@/types";
 
 export interface AdminCreateUserArgs {
@@ -19,13 +20,21 @@ export interface AdminUpdateUserArgs {
   department?: string | null;
 }
 
+export interface UpdateMyAccountArgs {
+  full_name: string;
+  email?: string;
+  password?: string;
+}
+
 interface AuthState {
   user: Profile | null;
   session: Session | null;
   loading: boolean;
   initialized: boolean;
+  syncing: boolean;
   init: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
+  signInWithMicrosoft: () => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   adminCreateUser: (
@@ -36,6 +45,7 @@ interface AuthState {
     patch: AdminUpdateUserArgs,
   ) => Promise<{ error: string | null }>;
   adminDeleteUser: (userId: string) => Promise<{ error: string | null }>;
+  updateMyAccount: (args: UpdateMyAccountArgs) => Promise<{ error: string | null }>;
 }
 
 async function fetchProfile(userId: string): Promise<Profile | null> {
@@ -56,6 +66,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   session: null,
   loading: true,
   initialized: false,
+  syncing: false,
 
   init: async () => {
     if (get().initialized) return;
@@ -67,12 +78,26 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
     set({ session, user: profile, loading: false, initialized: true });
 
-    supabase.auth.onAuthStateChange(async (_event, newSession) => {
+    supabase.auth.onAuthStateChange(async (event, newSession) => {
       if (newSession?.user) {
+        const isAzureSignIn =
+          event === "SIGNED_IN" &&
+          newSession.user.app_metadata?.provider === "azure" &&
+          !!newSession.provider_token;
+
+        if (isAzureSignIn) {
+          set({ syncing: true });
+          try {
+            await syncProfileFromGraph(newSession.user.id, newSession.provider_token!);
+          } catch (e) {
+            console.warn("[authStore] graph sync error", e);
+          }
+        }
+
         const p = await fetchProfile(newSession.user.id);
-        set({ session: newSession, user: p });
+        set({ session: newSession, user: p, syncing: false });
       } else {
-        set({ session: null, user: null });
+        set({ session: null, user: null, syncing: false });
       }
     });
   },
@@ -89,6 +114,21 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       profile = await fetchProfile(data.session.user.id);
     }
     set({ session: data.session, user: profile, loading: false });
+    return { error: null };
+  },
+
+  signInWithMicrosoft: async () => {
+    const redirectTo = `${window.location.origin}/auth/callback`;
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "azure",
+      options: {
+        redirectTo,
+        scopes: "openid email profile User.Read offline_access",
+      },
+    });
+    if (error) return { error: error.message };
+    // Browser redirects to Microsoft; the resolved promise above just confirms
+    // the redirect URL was generated. No further action needed here.
     return { error: null };
   },
 
@@ -190,6 +230,23 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       };
     }
 
+    // Audit log — best-effort, do not fail the create if logging fails.
+    const adminId = get().user?.id;
+    if (adminId) {
+      await supabase.from("audit_logs").insert({
+        changed_by: adminId,
+        action: "USER_CREATED",
+        new_value: {
+          user_id: newUserId,
+          email,
+          role,
+          full_name,
+          manager_id: manager_id ?? null,
+          department: department ?? null,
+        },
+      });
+    }
+
     return { error: null, userId: newUserId };
   },
 
@@ -217,6 +274,39 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (userId === get().user?.id) {
       await get().refreshProfile();
     }
+    return { error: null };
+  },
+
+  // Lets the currently signed-in user update their own name/email/password.
+  // Used by the first-time admin onboarding wizard so the seeded demo admin
+  // can swap admin@demo.com for a real inbox and actually receive goal-event
+  // emails. Email changes are immediate when Supabase "Confirm email" is OFF
+  // (already disabled on the demo project).
+  updateMyAccount: async ({ full_name, email, password }) => {
+    const selfId = get().user?.id;
+    if (!selfId) return { error: "Not signed in" };
+
+    const authPatch: { email?: string; password?: string; data?: Record<string, unknown> } = {
+      data: { full_name },
+    };
+    if (email && email.trim().length > 0) authPatch.email = email.trim();
+    if (password && password.length > 0) authPatch.password = password;
+
+    const { error: authErr } = await supabase.auth.updateUser(authPatch);
+    if (authErr) return { error: authErr.message };
+
+    const profilePatch: Record<string, unknown> = { full_name: full_name.trim() };
+    if (email && email.trim().length > 0) profilePatch.email = email.trim();
+
+    const { error: profileErr } = await supabase
+      .from("profiles")
+      .update(profilePatch)
+      .eq("id", selfId);
+    if (profileErr) {
+      return { error: `Auth updated but profile sync failed: ${profileErr.message}` };
+    }
+
+    await get().refreshProfile();
     return { error: null };
   },
 

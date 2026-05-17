@@ -18,6 +18,8 @@ export interface Profile {
   manager_id: string | null;
   department: string | null;
   created_at: string;
+  azure_oid?: string | null;
+  auth_provider?: string | null;
 }
 
 export interface GoalSheet {
@@ -119,3 +121,46 @@ export interface GoalSheetWithEmployee extends GoalSheet {
 }
 
 export type GoalDraft = Omit<Goal, "id" | "sheet_id" | "is_locked" | "created_at">;
+
+// -- Phase 5.3: Escalation ---------------------------------------------------
+
+export type TriggerType = "SUBMIT_OVERDUE" | "APPROVE_OVERDUE" | "CHECKIN_OVERDUE";
+export type EscalateTarget = "EMPLOYEE" | "MANAGER" | "SKIP_LEVEL" | "HR";
+
+export interface EscalationRule {
+  id: string;
+  name: string;
+  trigger_type: TriggerType;
+  threshold_days: number;
+  escalate_to: EscalateTarget;
+  is_active: boolean;
+  created_at: string;
+}
+
+export type EscalationRuleDraft = Omit<EscalationRule, "id" | "created_at">;
+
+export interface Escalation {
+  id: string;
+  rule_id: string | null;
+  subject_user_id: string;
+  recipient_user_id: string | null;
+  trigger_type: TriggerType;
+  sheet_id: string | null;
+  reason_text: string;
+  fired_at: string;
+  resolved_at: string | null;
+}
+
+export interface EscalationWithPeople extends Escalation {
+  subject: Pick<Profile, "id" | "full_name" | "email"> | null;
+  recipient: Pick<Profile, "id" | "full_name" | "email"> | null;
+  rule_name: string | null;
+}
+
+export interface RunEscalationsResult {
+  ok: boolean;
+  evaluated_rules: number;
+  fired: number;
+  skipped_duplicates: number;
+  error?: string;
+}

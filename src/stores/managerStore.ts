@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { supabase } from "@/lib/supabase";
+import { notify } from "@/lib/notify";
 import type {
   CheckIn,
   Goal,
@@ -210,6 +211,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
     });
 
     set({ reviewSheet: sheet as GoalSheet });
+    notify({ event: "approved", sheetId, actorId: managerId, remark });
     return { error: null };
   },
 
@@ -230,6 +232,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
     });
 
     set({ reviewSheet: sheet as GoalSheet });
+    notify({ event: "returned", sheetId, actorId: managerId, remark });
     return { error: null };
   },
 

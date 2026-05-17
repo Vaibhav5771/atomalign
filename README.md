@@ -6,6 +6,8 @@ In-house portal for company-wide quarterly goal setting, manager approval, achie
 **Demo credentials:** see [`context/demo-credentials.md`](./context/demo-credentials.md)
 **Architecture diagram:** see [`context/architecture.png`](./context/architecture.png)
 
+> **Recommended for judges:** sign in as `admin@demo.com` / `Demo@1234`. The **Create Team** wizard auto-opens on the admin dashboard — use it to set up your own admin email/password, add 1–5 managers and 1–20 employees in one go, and you'll receive real welcome + goal-event emails to whichever addresses you used.
+
 ---
 
 ## What's built

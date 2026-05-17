@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/select";
 import { QuarterSelector } from "@/components/goals/QuarterSelector";
 import { ManagerCheckInView } from "@/components/manager/ManagerCheckInView";
+import { CyclePhaseBanner } from "@/components/goals/CyclePhaseBanner";
 import { currentQuarter } from "@/lib/utils";
 import type { Quarter } from "@/types";
 
@@ -83,6 +84,8 @@ export default function ManagerCheckInsPage() {
         </div>
         <QuarterSelector activeQuarter={quarter} onQuarterChange={setQuarter} />
       </div>
+
+      <CyclePhaseBanner />
 
       <Card>
         <CardHeader>

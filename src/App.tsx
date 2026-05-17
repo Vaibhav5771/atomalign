@@ -6,6 +6,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { SplashScreen } from "@/components/layout/SplashScreen";
 import { useAuthStore } from "@/stores/authStore";
 import LoginPage from "@/pages/auth/LoginPage";
+import AuthCallbackPage from "@/pages/auth/AuthCallbackPage";
 import EmployeeDashboard from "@/pages/employee/EmployeeDashboard";
 import NewGoalSheetPage from "@/pages/employee/NewGoalSheetPage";
 import GoalSheetPage from "@/pages/employee/GoalSheetPage";
@@ -18,6 +19,7 @@ import SharedGoalsPage from "@/pages/admin/SharedGoalsPage";
 import UsersPage from "@/pages/admin/UsersPage";
 import ReportsPage from "@/pages/admin/ReportsPage";
 import AnalyticsPage from "@/pages/admin/AnalyticsPage";
+import EscalationsPage from "@/pages/admin/EscalationsPage";
 import NotFoundPage from "@/pages/NotFoundPage";
 import type { UserRole } from "@/types";
 
@@ -49,6 +51,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<RootRedirect />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/auth/callback" element={<AuthCallbackPage />} />
 
         {/* Employee */}
         <Route element={<ProtectedRoute allowedRoles={["EMPLOYEE"]} />}>
@@ -77,6 +80,7 @@ export default function App() {
             <Route path="/admin/users" element={<UsersPage />} />
             <Route path="/admin/reports" element={<ReportsPage />} />
             <Route path="/admin/analytics" element={<AnalyticsPage />} />
+            <Route path="/admin/escalations" element={<EscalationsPage />} />
           </Route>
         </Route>
 

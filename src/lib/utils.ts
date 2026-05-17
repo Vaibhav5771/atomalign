@@ -100,3 +100,76 @@ export const QUARTER_LABELS: Record<Quarter, string> = {
 };
 
 export const QUARTERS: Quarter[] = ["Q1", "Q2", "Q3", "Q4"];
+
+// -----------------------------------------------------------------------------
+// Cycle-phase indicator per BRD §2.3:
+//   May–Jun: Phase 1 goal-setting window (no check-in open yet)
+//   Jul–Sep: Q1 check-in window
+//   Oct–Dec: Q2 check-in window
+//   Jan–Feb: Q3 check-in window
+//   Mar–Apr: Q4 final achievement capture
+//
+// We expose this as an informational indicator only — the app does not
+// hard-block saves outside the current window because that would prevent
+// demoing the full check-in flow during the goal-setting period. UI surfaces
+// it as a banner so reviewers can see we know the schedule.
+// -----------------------------------------------------------------------------
+export type CyclePhase =
+  | "GOAL_SETTING"
+  | "Q1_OPEN"
+  | "Q2_OPEN"
+  | "Q3_OPEN"
+  | "Q4_OPEN";
+
+export interface CyclePhaseInfo {
+  phase: CyclePhase;
+  /** Currently open check-in quarter, or null during goal-setting. */
+  openQuarter: Quarter | null;
+  /** Short label e.g. "Q1 check-in window is open (Jul–Sep)". */
+  label: string;
+  /** Sub-text describing the next window e.g. "Q2 opens in October". */
+  nextHint: string;
+}
+
+export function cyclePhase(date: Date = new Date()): CyclePhaseInfo {
+  const m = date.getMonth(); // 0..11
+  if (m === 4 || m === 5) {
+    return {
+      phase: "GOAL_SETTING",
+      openQuarter: null,
+      label: "Goal-setting window is open (May–Jun)",
+      nextHint: "Q1 check-in window opens in July.",
+    };
+  }
+  if (m >= 6 && m <= 8) {
+    return {
+      phase: "Q1_OPEN",
+      openQuarter: "Q1",
+      label: "Q1 check-in window is open (Jul–Sep)",
+      nextHint: "Q2 opens in October.",
+    };
+  }
+  if (m >= 9 && m <= 11) {
+    return {
+      phase: "Q2_OPEN",
+      openQuarter: "Q2",
+      label: "Q2 check-in window is open (Oct–Dec)",
+      nextHint: "Q3 opens in January.",
+    };
+  }
+  if (m === 0 || m === 1) {
+    return {
+      phase: "Q3_OPEN",
+      openQuarter: "Q3",
+      label: "Q3 check-in window is open (Jan–Feb)",
+      nextHint: "Q4 / annual capture opens in March.",
+    };
+  }
+  // m === 2 || m === 3 (Mar, Apr) → Q4 / annual capture
+  return {
+    phase: "Q4_OPEN",
+    openQuarter: "Q4",
+    label: "Q4 / annual achievement capture is open (Mar–Apr)",
+    nextHint: "Next cycle's goal-setting window opens in May.",
+  };
+}

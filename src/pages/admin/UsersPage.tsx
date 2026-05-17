@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Loader2, Pencil, Trash2 } from "lucide-react";
+import { Loader2, Pencil, Trash2, UserPlus2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/authStore";
 import { useToast } from "@/hooks/use-toast";
+import { CreateTeamWizard } from "@/components/admin/CreateTeamWizard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -76,6 +77,7 @@ export default function UsersPage() {
   const [submitting, setSubmitting] = useState(false);
   const [editing, setEditing] = useState<Profile | null>(null);
   const [deleting, setDeleting] = useState<Profile | null>(null);
+  const [wizardOpen, setWizardOpen] = useState(false);
 
   const {
     register,
@@ -131,7 +133,7 @@ export default function UsersPage() {
       password: values.password,
       full_name: values.full_name.trim(),
       role: values.role,
-      manager_id: values.role === "EMPLOYEE" ? values.manager_id || null : null,
+      manager_id: values.manager_id || null,
       department: values.department?.trim() || null,
     });
     setSubmitting(false);
@@ -162,12 +164,19 @@ export default function UsersPage() {
 
   return (
     <div className="space-y-5 max-w-5xl">
-      <div>
-        <h1 className="text-2xl font-semibold">Users</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Create new employees, managers, and admins. New users can sign in
-          immediately with the email and password set below.
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold">Users</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Create a team in one go, or add a single user using the form below.
+            New users can sign in immediately with the email and password set
+            here.
+          </p>
+        </div>
+        <Button type="button" onClick={() => setWizardOpen(true)}>
+          <UserPlus2 className="h-4 w-4 mr-1" />
+          Create Team
+        </Button>
       </div>
 
       <Card>
@@ -248,34 +257,32 @@ export default function UsersPage() {
                   placeholder="e.g. Sales, Engineering"
                 />
               </div>
-              {role === "EMPLOYEE" && (
-                <div className="space-y-1">
-                  <Label htmlFor="manager_id">Reporting manager (optional)</Label>
-                  <Select
-                    value={managerId ?? ""}
-                    onValueChange={(v) =>
-                      setValue("manager_id", v, { shouldValidate: true })
-                    }
-                  >
-                    <SelectTrigger id="manager_id">
-                      <SelectValue placeholder="No manager" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {managers.length === 0 ? (
-                        <SelectItem value="__none__" disabled>
-                          No managers yet — create one first
+              <div className="space-y-1">
+                <Label htmlFor="manager_id">Reporting manager (optional)</Label>
+                <Select
+                  value={managerId ?? ""}
+                  onValueChange={(v) =>
+                    setValue("manager_id", v, { shouldValidate: true })
+                  }
+                >
+                  <SelectTrigger id="manager_id">
+                    <SelectValue placeholder="No manager" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {managers.length === 0 ? (
+                      <SelectItem value="__none__" disabled>
+                        No managers yet — create one first
+                      </SelectItem>
+                    ) : (
+                      managers.map((m) => (
+                        <SelectItem key={m.id} value={m.id}>
+                          {m.full_name || m.email}
                         </SelectItem>
-                      ) : (
-                        managers.map((m) => (
-                          <SelectItem key={m.id} value={m.id}>
-                            {m.full_name || m.email}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             <div className="flex justify-end pt-1">
@@ -382,6 +389,22 @@ export default function UsersPage() {
           void loadUsers();
         }}
       />
+
+      <Dialog
+        open={wizardOpen}
+        onOpenChange={(open) => {
+          if (!open) setWizardOpen(false);
+        }}
+      >
+        <DialogContent className="sm:max-w-3xl">
+          <CreateTeamWizard
+            onClose={() => setWizardOpen(false)}
+            onComplete={() => {
+              void loadUsers();
+            }}
+          />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -456,8 +479,7 @@ function EditUserDialog({ user, managers, onClose, onSaved }: EditDialogProps) {
     };
     if (!isAdminTarget) {
       patch.role = values.role;
-      patch.manager_id =
-        values.role === "EMPLOYEE" ? values.manager_id || null : null;
+      patch.manager_id = values.manager_id || null;
     }
 
     const { error } = await adminUpdateUser(user.id, patch);
@@ -524,7 +546,7 @@ function EditUserDialog({ user, managers, onClose, onSaved }: EditDialogProps) {
             <Input id="edit_department" {...register("department")} placeholder="—" />
           </div>
 
-          {!isAdminTarget && role === "EMPLOYEE" && (
+          {!isAdminTarget && (
             <div className="space-y-1">
               <Label htmlFor="edit_manager_id">Reporting manager</Label>
               <Select

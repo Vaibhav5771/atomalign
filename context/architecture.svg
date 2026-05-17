@@ -1,0 +1,193 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 960" width="1280" height="960" font-family="-apple-system, Segoe UI, Roboto, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <filter id="shadow" x="-2%" y="-2%" width="104%" height="108%">
+      <feDropShadow dx="0" dy="2" stdDeviation="2.5" flood-color="#0f172a" flood-opacity="0.10"/>
+    </filter>
+  </defs>
+
+  <rect width="1280" height="960" fill="#f8fafc"/>
+
+  <!-- Title -->
+  <text x="640" y="46" text-anchor="middle" font-size="26" font-weight="700" fill="#0f172a">AtomAlign — Architecture</text>
+  <text x="640" y="70" text-anchor="middle" font-size="13" fill="#64748b">In-house Goal Setting &amp; Tracking Portal · AtomQuest Hackathon 1.0</text>
+
+  <!-- =============================================================== -->
+  <!-- LAYER 1: Users -->
+  <!-- =============================================================== -->
+  <g font-size="13" fill="#0f172a">
+    <!-- Employee -->
+    <rect x="120" y="100" width="280" height="110" rx="10" fill="#dbeafe" stroke="#3b82f6" stroke-width="1.5" filter="url(#shadow)"/>
+    <text x="260" y="128" text-anchor="middle" font-size="15" font-weight="700">Employee</text>
+    <text x="260" y="152" text-anchor="middle" font-size="12" fill="#475569">Create goals · Submit for approval</text>
+    <text x="260" y="170" text-anchor="middle" font-size="12" fill="#475569">Log quarterly check-ins</text>
+    <text x="260" y="188" text-anchor="middle" font-size="12" fill="#475569">View locked + shared goals</text>
+
+    <!-- Manager -->
+    <rect x="500" y="100" width="280" height="110" rx="10" fill="#dbeafe" stroke="#3b82f6" stroke-width="1.5" filter="url(#shadow)"/>
+    <text x="640" y="128" text-anchor="middle" font-size="15" font-weight="700">Manager (L1)</text>
+    <text x="640" y="152" text-anchor="middle" font-size="12" fill="#475569">Review · Inline-edit · Approve</text>
+    <text x="640" y="170" text-anchor="middle" font-size="12" fill="#475569">Return for rework</text>
+    <text x="640" y="188" text-anchor="middle" font-size="12" fill="#475569">Comment on check-ins</text>
+
+    <!-- Admin -->
+    <rect x="880" y="100" width="280" height="110" rx="10" fill="#dbeafe" stroke="#3b82f6" stroke-width="1.5" filter="url(#shadow)"/>
+    <text x="1020" y="128" text-anchor="middle" font-size="15" font-weight="700">Admin / HR</text>
+    <text x="1020" y="152" text-anchor="middle" font-size="12" fill="#475569">Create Team wizard · User mgmt</text>
+    <text x="1020" y="170" text-anchor="middle" font-size="12" fill="#475569">Shared goals · Reports · Analytics</text>
+    <text x="1020" y="188" text-anchor="middle" font-size="12" fill="#475569">Escalation rules · Audit trail</text>
+  </g>
+
+  <!-- HTTPS arrows from users to frontend -->
+  <g stroke="#475569" stroke-width="1.5" fill="none" marker-end="url(#arrow)">
+    <path d="M 260 215 L 260 270"/>
+    <path d="M 640 215 L 640 270"/>
+    <path d="M 1020 215 L 1020 270"/>
+  </g>
+  <text x="640" y="248" text-anchor="middle" font-size="11" fill="#64748b" font-style="italic">HTTPS · web browser only (no native app)</text>
+
+  <!-- =============================================================== -->
+  <!-- LAYER 2: Frontend on Vercel -->
+  <!-- =============================================================== -->
+  <g>
+    <rect x="80" y="280" width="1120" height="220" rx="12" fill="#d1fae5" stroke="#059669" stroke-width="1.5" filter="url(#shadow)"/>
+    <text x="640" y="308" text-anchor="middle" font-size="17" font-weight="700" fill="#064e3b">Vercel — Static SPA (CDN edge)</text>
+    <text x="640" y="328" text-anchor="middle" font-size="12" fill="#065f46">React 19 · Vite 8 · TypeScript · Tailwind 3 · shadcn/ui · Recharts</text>
+
+    <!-- Sub-boxes -->
+    <g font-size="11" fill="#064e3b">
+      <!-- Pages -->
+      <rect x="110" y="350" width="240" height="130" rx="8" fill="#ffffff" stroke="#10b981" stroke-width="1"/>
+      <text x="230" y="370" text-anchor="middle" font-size="13" font-weight="700">Pages</text>
+      <text x="230" y="392" text-anchor="middle">/login · /auth/callback</text>
+      <text x="230" y="408" text-anchor="middle">/employee/dashboard · goals · checkins</text>
+      <text x="230" y="424" text-anchor="middle">/manager/dashboard · review · checkins</text>
+      <text x="230" y="440" text-anchor="middle">/admin/dashboard · users · shared-goals</text>
+      <text x="230" y="456" text-anchor="middle">/admin/reports · analytics · escalations</text>
+      <text x="230" y="472" text-anchor="middle">+ CreateTeamWizard modal</text>
+
+      <!-- Zustand stores -->
+      <rect x="370" y="350" width="240" height="130" rx="8" fill="#ffffff" stroke="#10b981" stroke-width="1"/>
+      <text x="490" y="370" text-anchor="middle" font-size="13" font-weight="700">Zustand Stores</text>
+      <text x="490" y="392" text-anchor="middle">authStore (email + Azure SSO,</text>
+      <text x="490" y="408" text-anchor="middle">adminCreateUser, updateMyAccount)</text>
+      <text x="490" y="424" text-anchor="middle">goalSheetStore</text>
+      <text x="490" y="440" text-anchor="middle">managerStore · reportsStore</text>
+      <text x="490" y="456" text-anchor="middle">analyticsStore</text>
+      <text x="490" y="472" text-anchor="middle">escalationsStore</text>
+
+      <!-- Client libs -->
+      <rect x="630" y="350" width="240" height="130" rx="8" fill="#ffffff" stroke="#10b981" stroke-width="1"/>
+      <text x="750" y="370" text-anchor="middle" font-size="13" font-weight="700">Client libs</text>
+      <text x="750" y="392" text-anchor="middle">supabase-js (auth · REST · realtime)</text>
+      <text x="750" y="408" text-anchor="middle">graph.ts — MS Graph /me sync</text>
+      <text x="750" y="424" text-anchor="middle">notify.ts — fire-and-forget</text>
+      <text x="750" y="440" text-anchor="middle">utils.ts — UoM score functions</text>
+      <text x="750" y="456" text-anchor="middle">(Min · Max · Timeline · Zero)</text>
+
+      <!-- UI primitives -->
+      <rect x="890" y="350" width="280" height="130" rx="8" fill="#ffffff" stroke="#10b981" stroke-width="1"/>
+      <text x="1030" y="370" text-anchor="middle" font-size="13" font-weight="700">Validation + UX</text>
+      <text x="1030" y="392" text-anchor="middle">react-hook-form + zod</text>
+      <text x="1030" y="408" text-anchor="middle">WeightageBar = 100% gate</text>
+      <text x="1030" y="424" text-anchor="middle">8-goal cap · 10% min per goal</text>
+      <text x="1030" y="440" text-anchor="middle">SheetJS xlsx export</text>
+      <text x="1030" y="456" text-anchor="middle">Recharts: 4 analytics charts</text>
+    </g>
+  </g>
+
+  <!-- Arrow Frontend → Backend -->
+  <g stroke="#475569" stroke-width="1.5" fill="none" marker-end="url(#arrow)">
+    <path d="M 640 505 L 640 560"/>
+  </g>
+  <text x="640" y="538" text-anchor="middle" font-size="11" fill="#64748b" font-style="italic">JWT bearer · publishable (anon) key</text>
+
+  <!-- =============================================================== -->
+  <!-- LAYER 3: Supabase backend -->
+  <!-- =============================================================== -->
+  <g>
+    <rect x="80" y="570" width="850" height="320" rx="12" fill="#fef3c7" stroke="#d97706" stroke-width="1.5" filter="url(#shadow)"/>
+    <text x="505" y="598" text-anchor="middle" font-size="17" font-weight="700" fill="#78350f">Supabase — managed Postgres + Auth + Edge Functions (free tier)</text>
+
+    <!-- Auth box -->
+    <g font-size="11" fill="#78350f">
+      <rect x="110" y="620" width="240" height="245" rx="8" fill="#ffffff" stroke="#f59e0b" stroke-width="1"/>
+      <text x="230" y="640" text-anchor="middle" font-size="13" font-weight="700">Auth</text>
+      <text x="230" y="662" text-anchor="middle">email/password</text>
+      <text x="230" y="678" text-anchor="middle">+ Azure / Entra ID SSO</text>
+      <text x="230" y="700" text-anchor="middle" font-weight="600">handle_new_user trigger:</text>
+      <text x="230" y="716" text-anchor="middle">- creates profiles row</text>
+      <text x="230" y="732" text-anchor="middle">- rejects azure sign-in if</text>
+      <text x="230" y="748" text-anchor="middle">  email not pre-registered</text>
+      <text x="230" y="764" text-anchor="middle">  (migration 0009)</text>
+      <text x="230" y="786" text-anchor="middle">JWT tokens · session refresh</text>
+      <text x="230" y="808" text-anchor="middle" font-weight="600">Confirm-email = OFF</text>
+      <text x="230" y="824" text-anchor="middle">(admin-created users</text>
+      <text x="230" y="840" text-anchor="middle">sign in immediately)</text>
+
+      <!-- Postgres box -->
+      <rect x="370" y="620" width="280" height="245" rx="8" fill="#ffffff" stroke="#f59e0b" stroke-width="1"/>
+      <text x="510" y="640" text-anchor="middle" font-size="13" font-weight="700">Postgres</text>
+      <text x="510" y="660" text-anchor="middle" font-weight="600">Tables</text>
+      <text x="510" y="676" text-anchor="middle">profiles · goal_sheets · goals</text>
+      <text x="510" y="692" text-anchor="middle">shared_goals · check_ins</text>
+      <text x="510" y="708" text-anchor="middle">audit_logs · escalation_rules</text>
+      <text x="510" y="724" text-anchor="middle">escalations</text>
+      <text x="510" y="744" text-anchor="middle" font-weight="600">Triggers</text>
+      <text x="510" y="760" text-anchor="middle">enforce_goal_cap (max 8)</text>
+      <text x="510" y="776" text-anchor="middle">enforce_shared_goal_lock</text>
+      <text x="510" y="792" text-anchor="middle">touch_updated_at</text>
+      <text x="510" y="812" text-anchor="middle" font-weight="600">RPC · View</text>
+      <text x="510" y="828" text-anchor="middle">admin_delete_user (SECURITY</text>
+      <text x="510" y="844" text-anchor="middle">DEFINER) · analytics_summary</text>
+
+      <!-- Edge functions box -->
+      <rect x="670" y="620" width="240" height="245" rx="8" fill="#ffffff" stroke="#f59e0b" stroke-width="1"/>
+      <text x="790" y="640" text-anchor="middle" font-size="13" font-weight="700">Edge Functions (Deno)</text>
+      <text x="790" y="664" text-anchor="middle" font-weight="600">notify</text>
+      <text x="790" y="680" text-anchor="middle">submitted · approved ·</text>
+      <text x="790" y="696" text-anchor="middle">returned · checkin_saved</text>
+      <text x="790" y="712" text-anchor="middle">escalation · user_created</text>
+      <text x="790" y="728" text-anchor="middle">→ Gmail SMTP · Teams card</text>
+      <text x="790" y="752" text-anchor="middle" font-weight="600">evaluate-escalations</text>
+      <text x="790" y="768" text-anchor="middle">Scheduled daily (Supabase cron)</text>
+      <text x="790" y="784" text-anchor="middle">Reads escalation_rules</text>
+      <text x="790" y="800" text-anchor="middle">Fires notify per match</text>
+      <text x="790" y="824" text-anchor="middle">Idempotent via daily</text>
+      <text x="790" y="840" text-anchor="middle">unique index</text>
+    </g>
+  </g>
+
+  <!-- =============================================================== -->
+  <!-- Side annotation: Security boundary (right of backend) -->
+  <!-- =============================================================== -->
+  <g>
+    <rect x="950" y="570" width="250" height="170" rx="10" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5" filter="url(#shadow)"/>
+    <text x="1075" y="595" text-anchor="middle" font-size="14" font-weight="700" fill="#4c1d95">Security boundary</text>
+    <g font-size="12" fill="#4c1d95">
+      <text x="970" y="620">• Row Level Security on every</text>
+      <text x="970" y="636">  table (auth.uid() + role)</text>
+      <text x="970" y="656">• No custom backend service</text>
+      <text x="970" y="676">• Publishable (anon) key in</text>
+      <text x="970" y="692">  the client; never service-role</text>
+      <text x="970" y="712">• SECURITY DEFINER only for</text>
+      <text x="970" y="728">  admin_delete_user RPC</text>
+    </g>
+
+    <!-- External integrations box below security -->
+    <rect x="950" y="760" width="250" height="130" rx="10" fill="#fce7f3" stroke="#db2777" stroke-width="1.5" filter="url(#shadow)"/>
+    <text x="1075" y="785" text-anchor="middle" font-size="14" font-weight="700" fill="#831843">External integrations</text>
+    <g font-size="12" fill="#831843">
+      <text x="970" y="810">• Microsoft Graph /me?$expand</text>
+      <text x="970" y="826">  =manager (org hierarchy sync)</text>
+      <text x="970" y="846">• Gmail SMTP (denomailer) for</text>
+      <text x="970" y="862">  notifications · 500/day free</text>
+      <text x="970" y="882">• MS Teams webhook (deferred)</text>
+    </g>
+  </g>
+
+  <!-- Footer -->
+  <text x="640" y="940" text-anchor="middle" font-size="11" fill="#64748b">AtomQuest Hackathon 1.0 · Vaibhav · 2026-05-17 · BRD coverage: Phase 1 ✓ · Phase 2 ✓ · 5.1 ✓ · 5.2 ✓ · 5.3 ✓ · 5.4 ✓</text>
+</svg>
