@@ -359,7 +359,7 @@ Replaces the original "create users by hand in the Supabase Auth dashboard" work
 
 ## 5.3 — Rule-Based Escalation Module 🔄
 
-> Full design: [05-3-escalation-plan.md](./05-3-escalation-plan.md)
+> Design: [05-3-escalation-plan.md](./05-3-escalation-plan.md) · Test walkthrough: [05-3-escalation-test.md](./05-3-escalation-test.md) (26 numbered tests across Sections 31–36)
 
 ### Status
 

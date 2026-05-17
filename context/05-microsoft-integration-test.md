@@ -27,8 +27,8 @@ Make sure:
   - Supabase Auth → Providers → Azure enabled + credentials pasted
   - `/auth/callback` added to Supabase Redirect URLs for both `localhost:5174` and `atomalign.vercel.app`
   - Edge Function `notify` deployed
-  - Secrets set (`RESEND_API_KEY`, `RESEND_FROM`, `TEAMS_WEBHOOK_URL`, `APP_BASE_URL`)
-  - Teams Incoming Webhook created and its URL stored as the `TEAMS_WEBHOOK_URL` secret
+  - Secrets set: `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `GMAIL_FROM_NAME`, `APP_BASE_URL` (and optional `TEAMS_WEBHOOK_URL`)
+  - Teams Incoming Webhook (optional) created and its URL stored as the `TEAMS_WEBHOOK_URL` secret. Skipped in our demo since the M365 Dev Program sandbox is pending — code-ready but not delivering Teams cards.
 
 ### What you need on hand
 
@@ -315,7 +315,7 @@ Make sure:
 
 ## SECTION 29 — Email + Teams Notifications (5.2)
 
-> If you skipped `RESEND_API_KEY` or `TEAMS_WEBHOOK_URL` in the function secrets, those specific channels will be skipped silently and the function returns `ok: false, reason: "no_api_key" / "no_webhook"`. Set them before running this section.
+> If you skipped `GMAIL_USER` / `GMAIL_APP_PASSWORD` or `TEAMS_WEBHOOK_URL` in the function secrets, those specific channels will be skipped silently and the function returns `ok: false, reason: "no_credentials" / "no_webhook"`. Set them before running this section.
 
 ---
 
