@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Loader2, Pencil, Trash2 } from "lucide-react";
+import { Loader2, Pencil, Trash2, UserPlus2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/authStore";
 import { useToast } from "@/hooks/use-toast";
+import { CreateTeamWizard } from "@/components/admin/CreateTeamWizard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -76,6 +77,7 @@ export default function UsersPage() {
   const [submitting, setSubmitting] = useState(false);
   const [editing, setEditing] = useState<Profile | null>(null);
   const [deleting, setDeleting] = useState<Profile | null>(null);
+  const [wizardOpen, setWizardOpen] = useState(false);
 
   const {
     register,
@@ -162,12 +164,19 @@ export default function UsersPage() {
 
   return (
     <div className="space-y-5 max-w-5xl">
-      <div>
-        <h1 className="text-2xl font-semibold">Users</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Create new employees, managers, and admins. New users can sign in
-          immediately with the email and password set below.
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold">Users</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Create a team in one go, or add a single user using the form below.
+            New users can sign in immediately with the email and password set
+            here.
+          </p>
+        </div>
+        <Button type="button" onClick={() => setWizardOpen(true)}>
+          <UserPlus2 className="h-4 w-4 mr-1" />
+          Create Team
+        </Button>
       </div>
 
       <Card>
@@ -380,6 +389,22 @@ export default function UsersPage() {
           void loadUsers();
         }}
       />
+
+      <Dialog
+        open={wizardOpen}
+        onOpenChange={(open) => {
+          if (!open) setWizardOpen(false);
+        }}
+      >
+        <DialogContent className="sm:max-w-3xl">
+          <CreateTeamWizard
+            onClose={() => setWizardOpen(false)}
+            onComplete={() => {
+              void loadUsers();
+            }}
+          />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

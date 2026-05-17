@@ -45,7 +45,8 @@ type EventType =
   | "approved"
   | "returned"
   | "checkin_saved"
-  | "escalation";
+  | "escalation"
+  | "user_created";
 
 interface Payload {
   event: EventType;
@@ -54,6 +55,10 @@ interface Payload {
   recipient_id?: string;
   remark?: string;
   quarter?: string;
+  // user_created only: plaintext password to ship in the welcome email.
+  // Acceptable here because the admin just typed it and it's about to be
+  // delivered to the rightful owner. Same posture as demo-credentials.md.
+  password?: string;
 }
 
 interface Recipient {
@@ -173,6 +178,69 @@ function teamsCard(event: EventType, ctx: Context, payload: Payload) {
   };
 }
 
+function welcomeHtml(
+  name: string,
+  email: string,
+  password: string | undefined,
+  loginUrl: string,
+  role: string,
+): string {
+  const cta = `<a href="${loginUrl}" style="display:inline-block;padding:10px 18px;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px;font-weight:600">Sign in to AtomAlign</a>`;
+  const credBlock = password
+    ? `<table style="width:100%;border-collapse:collapse;margin:16px 0;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px"><tr><td style="padding:10px 14px;font-size:13px;color:#475569;width:120px">Email</td><td style="padding:10px 14px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px">${email}</td></tr><tr><td style="padding:10px 14px;font-size:13px;color:#475569;border-top:1px solid #e2e8f0">Password</td><td style="padding:10px 14px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;border-top:1px solid #e2e8f0">${password}</td></tr><tr><td style="padding:10px 14px;font-size:13px;color:#475569;border-top:1px solid #e2e8f0">Role</td><td style="padding:10px 14px;font-size:13px;border-top:1px solid #e2e8f0">${role}</td></tr></table>`
+    : `<p style="margin:8px 0">Email: <strong>${email}</strong> &middot; Role: <strong>${role}</strong></p>`;
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Welcome to AtomAlign</title></head><body style="margin:0;padding:0;background:#f8fafc"><div style="font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#0f172a;max-width:560px;margin:0 auto;padding:24px;background:#ffffff"><h2 style="margin:0 0 16px;font-size:20px;color:#0f172a">Welcome to AtomAlign, ${name}</h2><p style="margin:0 0 8px">Your admin has set up an account for you on AtomAlign - the goal setting and tracking portal.</p>${credBlock}<p style="margin:24px 0 16px">${cta}</p><p style="font-size:13px;color:#475569;margin:0 0 8px">You can also sign in with your Microsoft account using the same email address.</p><hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0"><p style="font-size:12px;color:#64748b;margin:0">Sent by AtomAlign - Goal Setting &amp; Tracking Portal</p></div></body></html>`;
+}
+
+function welcomeText(
+  name: string,
+  email: string,
+  password: string | undefined,
+  loginUrl: string,
+): string {
+  const lines = [
+    `Welcome to AtomAlign, ${name}.`,
+    "",
+    "Your admin has set up an account for you on AtomAlign.",
+    "",
+    `Email:    ${email}`,
+  ];
+  if (password) lines.push(`Password: ${password}`);
+  lines.push("");
+  lines.push(`Sign in: ${loginUrl}`);
+  lines.push("");
+  lines.push("You can also sign in with your Microsoft account using the same email address.");
+  return lines.join("\n");
+}
+
+function welcomeTeamsCard(name: string, email: string, loginUrl: string) {
+  return {
+    type: "message",
+    attachments: [
+      {
+        contentType: "application/vnd.microsoft.card.adaptive",
+        content: {
+          type: "AdaptiveCard",
+          $schema: "https://adaptivecards.io/schemas/adaptive-card.json",
+          version: "1.4",
+          body: [
+            {
+              type: "TextBlock",
+              text: `Welcome to AtomAlign, ${name}`,
+              weight: "Bolder",
+              size: "Medium",
+            },
+            { type: "FactSet", facts: [{ title: "Email", value: email }] },
+          ],
+          actions: [
+            { type: "Action.OpenUrl", title: "Sign in", url: loginUrl },
+          ],
+        },
+      },
+    ],
+  };
+}
+
 async function sendEmail(
   to: string,
   subject: string,
@@ -264,6 +332,44 @@ Deno.serve(async (req) => {
   const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+
+  // ---- Welcome email path (admin-created users via the Create Team wizard).
+  // Bypasses the goal-sheet/manager resolution since there's no sheet yet and
+  // the recipient IS the subject.
+  if (payload.event === "user_created") {
+    if (!payload.recipient_id) {
+      return new Response(
+        JSON.stringify({ error: "missing_recipient_id" }),
+        { status: 400, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } },
+      );
+    }
+    const { data: newUser, error: newUserErr } = await admin
+      .from("profiles")
+      .select("id, full_name, email, role")
+      .eq("id", payload.recipient_id)
+      .single();
+    if (newUserErr || !newUser?.email) {
+      return new Response(
+        JSON.stringify({ error: "recipient_not_found", detail: newUserErr?.message }),
+        { status: 404, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } },
+      );
+    }
+    const loginUrl = `${APP_BASE_URL}/login`;
+    const name = newUser.full_name || newUser.email;
+    const subject = "Welcome to AtomAlign - your sign-in details";
+    const html = welcomeHtml(name, newUser.email, payload.password, loginUrl, newUser.role);
+    const text = welcomeText(name, newUser.email, payload.password, loginUrl);
+    const card = welcomeTeamsCard(name, newUser.email, loginUrl);
+
+    const [emailRes, teamsRes] = await Promise.all([
+      sendEmail(newUser.email, subject, html, text),
+      sendTeams(card),
+    ]);
+    return new Response(
+      JSON.stringify({ ok: true, email: emailRes, teams: teamsRes }),
+      { status: 200, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } },
+    );
+  }
 
   // Look up sheet if provided (optional for escalation events)
   let sheet: { id: string; employee_id: string; cycle_year: number } | null = null;

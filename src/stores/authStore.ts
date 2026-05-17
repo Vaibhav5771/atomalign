@@ -20,6 +20,12 @@ export interface AdminUpdateUserArgs {
   department?: string | null;
 }
 
+export interface UpdateMyAccountArgs {
+  full_name: string;
+  email?: string;
+  password?: string;
+}
+
 interface AuthState {
   user: Profile | null;
   session: Session | null;
@@ -39,6 +45,7 @@ interface AuthState {
     patch: AdminUpdateUserArgs,
   ) => Promise<{ error: string | null }>;
   adminDeleteUser: (userId: string) => Promise<{ error: string | null }>;
+  updateMyAccount: (args: UpdateMyAccountArgs) => Promise<{ error: string | null }>;
 }
 
 async function fetchProfile(userId: string): Promise<Profile | null> {
@@ -223,6 +230,23 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       };
     }
 
+    // Audit log — best-effort, do not fail the create if logging fails.
+    const adminId = get().user?.id;
+    if (adminId) {
+      await supabase.from("audit_logs").insert({
+        changed_by: adminId,
+        action: "USER_CREATED",
+        new_value: {
+          user_id: newUserId,
+          email,
+          role,
+          full_name,
+          manager_id: manager_id ?? null,
+          department: department ?? null,
+        },
+      });
+    }
+
     return { error: null, userId: newUserId };
   },
 
@@ -250,6 +274,39 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (userId === get().user?.id) {
       await get().refreshProfile();
     }
+    return { error: null };
+  },
+
+  // Lets the currently signed-in user update their own name/email/password.
+  // Used by the first-time admin onboarding wizard so the seeded demo admin
+  // can swap admin@demo.com for a real inbox and actually receive goal-event
+  // emails. Email changes are immediate when Supabase "Confirm email" is OFF
+  // (already disabled on the demo project).
+  updateMyAccount: async ({ full_name, email, password }) => {
+    const selfId = get().user?.id;
+    if (!selfId) return { error: "Not signed in" };
+
+    const authPatch: { email?: string; password?: string; data?: Record<string, unknown> } = {
+      data: { full_name },
+    };
+    if (email && email.trim().length > 0) authPatch.email = email.trim();
+    if (password && password.length > 0) authPatch.password = password;
+
+    const { error: authErr } = await supabase.auth.updateUser(authPatch);
+    if (authErr) return { error: authErr.message };
+
+    const profilePatch: Record<string, unknown> = { full_name: full_name.trim() };
+    if (email && email.trim().length > 0) profilePatch.email = email.trim();
+
+    const { error: profileErr } = await supabase
+      .from("profiles")
+      .update(profilePatch)
+      .eq("id", selfId);
+    if (profileErr) {
+      return { error: `Auth updated but profile sync failed: ${profileErr.message}` };
+    }
+
+    await get().refreshProfile();
     return { error: null };
   },
 

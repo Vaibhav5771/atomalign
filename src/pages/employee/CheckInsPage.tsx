@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { QuarterSelector } from "@/components/goals/QuarterSelector";
 import { CheckInForm } from "@/components/goals/CheckInForm";
+import { CyclePhaseBanner } from "@/components/goals/CyclePhaseBanner";
 import { currentQuarter } from "@/lib/utils";
 import type { Quarter } from "@/types";
 
@@ -65,6 +66,8 @@ export default function CheckInsPage() {
           <QuarterSelector activeQuarter={quarter} onQuarterChange={setQuarter} />
         )}
       </div>
+
+      <CyclePhaseBanner />
 
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
