@@ -24,6 +24,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { BlurFade } from "@/components/ui/magicui/blur-fade";
+import { useFocusRefresh } from "@/lib/use-focus-refresh";
 import { ExportButton } from "@/components/shared/ExportButton";
 import { CompletionTable } from "@/components/admin/CompletionTable";
 import { AuditTable } from "@/components/admin/AuditTable";
@@ -64,6 +66,10 @@ export default function ReportsPage() {
     void fetchCompletion();
     void fetchAudit();
   }, [fetchAchievement, fetchCompletion, fetchAudit]);
+
+  useFocusRefresh(() => {
+    void Promise.all([fetchAchievement(), fetchCompletion(), fetchAudit()]);
+  });
 
   // -------- Achievement tab ---------------------------------------------------
   const departmentOptions = useMemo(() => {
@@ -130,6 +136,7 @@ export default function ReportsPage() {
 
         {/* ============ Tab 1 — Achievement Export ============================ */}
         <TabsContent value="export" className="space-y-3">
+          <BlurFade>
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Achievement Export</CardTitle>
@@ -266,10 +273,12 @@ export default function ReportsPage() {
               </div>
             </CardContent>
           </Card>
+          </BlurFade>
         </TabsContent>
 
         {/* ============ Tab 2 — Completion Dashboard ========================== */}
         <TabsContent value="completion" className="space-y-3">
+          <BlurFade>
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Completion Dashboard</CardTitle>
@@ -295,10 +304,12 @@ export default function ReportsPage() {
               <CompletionTable rows={completion} loading={loadingCompletion} />
             </CardContent>
           </Card>
+          </BlurFade>
         </TabsContent>
 
         {/* ============ Tab 3 — Audit Trail =================================== */}
         <TabsContent value="audit" className="space-y-3">
+          <BlurFade>
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Audit Trail</CardTitle>
@@ -311,6 +322,7 @@ export default function ReportsPage() {
               <AuditTable rows={audit} loading={loadingAudit} />
             </CardContent>
           </Card>
+          </BlurFade>
         </TabsContent>
       </Tabs>
     </div>

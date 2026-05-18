@@ -82,100 +82,110 @@ export const useGoalSheetStore = create<GoalSheetState>((set, get) => ({
 
   fetchMySheet: async (employeeId, cycleYear) => {
     set({ loading: true, error: null });
+    try {
+      const { data: sheet, error: sheetErr } = await supabase
+        .from("goal_sheets")
+        .select("*")
+        .eq("employee_id", employeeId)
+        .eq("cycle_year", cycleYear)
+        .maybeSingle();
 
-    const { data: sheet, error: sheetErr } = await supabase
-      .from("goal_sheets")
-      .select("*")
-      .eq("employee_id", employeeId)
-      .eq("cycle_year", cycleYear)
-      .maybeSingle();
-
-    if (sheetErr) {
-      set({ loading: false, error: sheetErr.message });
-      return;
-    }
-
-    if (!sheet) {
-      set({
-        currentSheet: null,
-        goals: [],
-        sharedAssignments: [],
-        sharerProfiles: {},
-        loading: false,
-      });
-      return;
-    }
-
-    const [{ data: goals, error: goalsErr }, { data: shared, error: sharedErr }] =
-      await Promise.all([
-        supabase
-          .from("goals")
-          .select("*")
-          .eq("sheet_id", sheet.id)
-          .order("created_at", { ascending: true }),
-        supabase
-          .from("shared_goals")
-          .select("*, source:goals!source_goal_id(*)")
-          .eq("employee_id", employeeId),
-      ]);
-
-    if (goalsErr || sharedErr) {
-      set({ loading: false, error: goalsErr?.message ?? sharedErr?.message ?? "Load failed" });
-      return;
-    }
-
-    const sharedAssignments: SharedAssignment[] = (shared ?? []).map((row: any) => ({
-      link: {
-        id: row.id,
-        source_goal_id: row.source_goal_id,
-        employee_id: row.employee_id,
-        weightage: row.weightage,
-        created_at: row.created_at,
-      },
-      source: row.source as Goal,
-    }));
-
-    const sharerIds = Array.from(
-      new Set(
-        (goals ?? [])
-          .map((g: any) => g.shared_by as string | null)
-          .filter((id: string | null): id is string => !!id),
-      ),
-    );
-
-    const sharerProfiles: Record<string, SharedByProfile> = {};
-    if (sharerIds.length > 0) {
-      const { data: sharers } = await supabase
-        .from("profiles")
-        .select("id, full_name, email, role")
-        .in("id", sharerIds);
-      for (const p of sharers ?? []) {
-        sharerProfiles[p.id] = p as SharedByProfile;
+      if (sheetErr) {
+        set({ error: sheetErr.message });
+        return;
       }
-    }
 
-    set({
-      currentSheet: sheet as GoalSheet,
-      goals: (goals ?? []) as Goal[],
-      sharedAssignments,
-      sharerProfiles,
-      loading: false,
-    });
+      if (!sheet) {
+        set({
+          currentSheet: null,
+          goals: [],
+          sharedAssignments: [],
+          sharerProfiles: {},
+        });
+        return;
+      }
+
+      const [{ data: goals, error: goalsErr }, { data: shared, error: sharedErr }] =
+        await Promise.all([
+          supabase
+            .from("goals")
+            .select("*")
+            .eq("sheet_id", sheet.id)
+            .order("created_at", { ascending: true }),
+          supabase
+            .from("shared_goals")
+            .select("*, source:goals!source_goal_id(*)")
+            .eq("employee_id", employeeId),
+        ]);
+
+      if (goalsErr || sharedErr) {
+        set({ error: goalsErr?.message ?? sharedErr?.message ?? "Load failed" });
+        return;
+      }
+
+      const sharedAssignments: SharedAssignment[] = (shared ?? []).map((row: any) => ({
+        link: {
+          id: row.id,
+          source_goal_id: row.source_goal_id,
+          employee_id: row.employee_id,
+          weightage: row.weightage,
+          created_at: row.created_at,
+        },
+        source: row.source as Goal,
+      }));
+
+      const sharerIds = Array.from(
+        new Set(
+          (goals ?? [])
+            .map((g: any) => g.shared_by as string | null)
+            .filter((id: string | null): id is string => !!id),
+        ),
+      );
+
+      const sharerProfiles: Record<string, SharedByProfile> = {};
+      if (sharerIds.length > 0) {
+        const { data: sharers } = await supabase
+          .from("profiles")
+          .select("id, full_name, email, role")
+          .in("id", sharerIds);
+        for (const p of sharers ?? []) {
+          sharerProfiles[p.id] = p as SharedByProfile;
+        }
+      }
+
+      set({
+        currentSheet: sheet as GoalSheet,
+        goals: (goals ?? []) as Goal[],
+        sharedAssignments,
+        sharerProfiles,
+      });
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
+    } finally {
+      set({ loading: false });
+    }
   },
 
   createSheet: async (employeeId, cycleYear) => {
     set({ loading: true, error: null });
-    const { data, error } = await supabase
-      .from("goal_sheets")
-      .insert({ employee_id: employeeId, cycle_year: cycleYear, status: "DRAFT" })
-      .select()
-      .single();
-    if (error) {
-      set({ loading: false, error: error.message });
+    try {
+      const { data, error } = await supabase
+        .from("goal_sheets")
+        .insert({ employee_id: employeeId, cycle_year: cycleYear, status: "DRAFT" })
+        .select()
+        .single();
+      if (error) {
+        set({ error: error.message });
+        return null;
+      }
+      set({ currentSheet: data as GoalSheet, goals: [] });
+      return data as GoalSheet;
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
       return null;
+    } finally {
+      set({ loading: false });
     }
-    set({ currentSheet: data as GoalSheet, goals: [], loading: false });
-    return data as GoalSheet;
   },
 
   addGoal: async (draft) => {
@@ -248,39 +258,44 @@ export const useGoalSheetStore = create<GoalSheetState>((set, get) => ({
 
   fetchCheckIns: async (sheetId) => {
     set({ checkInsLoading: true });
+    try {
+      // First get the goals on this sheet so the IN filter is bounded
+      const { data: goals, error: gErr } = await supabase
+        .from("goals")
+        .select("id")
+        .eq("sheet_id", sheetId);
 
-    // First get the goals on this sheet so the IN filter is bounded
-    const { data: goals, error: gErr } = await supabase
-      .from("goals")
-      .select("id")
-      .eq("sheet_id", sheetId);
+      if (gErr) {
+        set({ error: gErr.message });
+        return;
+      }
 
-    if (gErr) {
-      set({ checkInsLoading: false, error: gErr.message });
-      return;
+      const goalIds = (goals ?? []).map((g) => g.id);
+      if (goalIds.length === 0) {
+        set({ checkIns: {} });
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("check_ins")
+        .select("*")
+        .in("goal_id", goalIds);
+
+      if (error) {
+        set({ error: error.message });
+        return;
+      }
+
+      const map: Record<string, CheckIn[]> = {};
+      for (const row of (data ?? []) as CheckIn[]) {
+        (map[row.goal_id] ??= []).push(row);
+      }
+      set({ checkIns: map });
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
+    } finally {
+      set({ checkInsLoading: false });
     }
-
-    const goalIds = (goals ?? []).map((g) => g.id);
-    if (goalIds.length === 0) {
-      set({ checkIns: {}, checkInsLoading: false });
-      return;
-    }
-
-    const { data, error } = await supabase
-      .from("check_ins")
-      .select("*")
-      .in("goal_id", goalIds);
-
-    if (error) {
-      set({ checkInsLoading: false, error: error.message });
-      return;
-    }
-
-    const map: Record<string, CheckIn[]> = {};
-    for (const row of (data ?? []) as CheckIn[]) {
-      (map[row.goal_id] ??= []).push(row);
-    }
-    set({ checkIns: map, checkInsLoading: false });
   },
 
   saveCheckIn: async (goalId, quarter, actual, actualDate, status) => {

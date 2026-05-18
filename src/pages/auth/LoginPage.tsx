@@ -14,6 +14,9 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Meteors } from "@/components/ui/magicui/meteors";
+import { BorderBeam } from "@/components/ui/magicui/border-beam";
+import { WordFadeIn } from "@/components/ui/magicui/word-fade-in";
 import { useToast } from "@/hooks/use-toast";
 import { useAuthStore } from "@/stores/authStore";
 import type { UserRole } from "@/types";
@@ -75,11 +78,14 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
-      <Card className="w-full max-w-sm">
+    <div className="relative min-h-screen flex items-center justify-center bg-background px-4 overflow-hidden">
+      <Meteors number={20} />
+      <Card className="relative w-full max-w-sm">
         <CardHeader>
-          <CardTitle>Sign in</CardTitle>
-          <CardDescription>AtomAlign — Goal Setting & Tracking</CardDescription>
+          <CardTitle className="text-2xl">
+            <WordFadeIn text="AtomAlign" />
+          </CardTitle>
+          <CardDescription>Goal Setting & Tracking</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={onSubmit} className="space-y-3" noValidate>
@@ -102,9 +108,14 @@ export default function LoginPage() {
                 <p className="text-xs text-destructive">{errors.password.message}</p>
               )}
             </div>
-            <Button type="submit" className="w-full" disabled={submitting || msSubmitting}>
+            <Button
+              type="submit"
+              className="w-full relative overflow-hidden"
+              disabled={submitting || msSubmitting}
+            >
               {submitting && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
               {submitting ? "Signing in…" : "Sign in"}
+              <BorderBeam />
             </Button>
           </form>
 

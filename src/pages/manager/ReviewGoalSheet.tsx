@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Loader2, AlertTriangle } from "lucide-react";
+import { useFocusRefresh } from "@/lib/use-focus-refresh";
 import { useAuthStore } from "@/stores/authStore";
 import { useManagerStore } from "@/stores/managerStore";
 import { Button } from "@/components/ui/button";
@@ -34,6 +35,10 @@ export default function ReviewGoalSheet() {
   useEffect(() => {
     if (sheetId) void fetchSheetForReview(sheetId);
   }, [sheetId, fetchSheetForReview]);
+
+  useFocusRefresh(() => {
+    if (sheetId) void fetchSheetForReview(sheetId);
+  });
 
   useEffect(() => {
     if (reviewSheet?.manager_remark) setRemark(reviewSheet.manager_remark);

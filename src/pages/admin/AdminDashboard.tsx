@@ -2,10 +2,13 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { UserPlus2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { useFocusRefresh } from "@/lib/use-focus-refresh";
 import { useAuthStore } from "@/stores/authStore";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { MagicCard } from "@/components/ui/magicui/magic-card";
+import { NumberTicker } from "@/components/ui/magicui/number-ticker";
+import { BentoGrid } from "@/components/ui/magicui/bento-grid";
 import { CreateTeamWizard } from "@/components/admin/CreateTeamWizard";
 import type { SheetStatus } from "@/types";
 
@@ -61,9 +64,10 @@ export default function AdminDashboard() {
     void loadStats();
   }, []);
 
-  // Auto-open the wizard once per admin (per browser). Triggered after stats
-  // resolve so the dialog overlays the populated dashboard rather than a
-  // skeleton.
+  useFocusRefresh(() => {
+    void loadStats();
+  });
+
   useEffect(() => {
     if (loading || !adminId) return;
     const seen = window.localStorage.getItem(ONBOARDING_KEY_PREFIX + adminId);
@@ -78,8 +82,11 @@ export default function AdminDashboard() {
     setWizardOpen(false);
   };
 
+  const approvalRate =
+    stats.sheets === 0 ? 0 : Math.round((stats.byStatus.APPROVED / stats.sheets) * 100);
+
   return (
-    <div className="space-y-5 max-w-5xl">
+    <div className="space-y-5 max-w-6xl">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">Admin overview</h1>
@@ -93,40 +100,49 @@ export default function AdminDashboard() {
         </Button>
       </div>
 
-      <div className="grid grid-cols-4 gap-3">
-        <Stat label="Employees" value={stats.employees} loading={loading} />
-        <Stat label="Managers" value={stats.managers} loading={loading} />
-        <Stat label="Total sheets" value={stats.sheets} loading={loading} />
-        <Stat label="Approved" value={stats.byStatus.APPROVED} loading={loading} />
-      </div>
+      <BentoGrid>
+        <StatTile label="Employees" value={stats.employees} loading={loading} />
+        <StatTile label="Managers" value={stats.managers} loading={loading} />
+        <StatTile label="Total sheets" value={stats.sheets} loading={loading} />
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Sheet status breakdown</CardTitle>
-        </CardHeader>
-        <CardContent>
+        <MagicCard className="md:col-span-2 p-4">
+          <div className="text-sm font-medium mb-3">Sheet status breakdown</div>
           <div className="grid grid-cols-4 gap-3">
-            <Stat label="Draft" value={stats.byStatus.DRAFT} loading={loading} muted />
-            <Stat label="Submitted" value={stats.byStatus.SUBMITTED} loading={loading} muted />
-            <Stat label="Approved" value={stats.byStatus.APPROVED} loading={loading} muted />
-            <Stat label="Returned" value={stats.byStatus.RETURNED} loading={loading} muted />
+            <MiniStat label="Draft" value={stats.byStatus.DRAFT} loading={loading} />
+            <MiniStat label="Submitted" value={stats.byStatus.SUBMITTED} loading={loading} />
+            <MiniStat label="Approved" value={stats.byStatus.APPROVED} loading={loading} />
+            <MiniStat label="Returned" value={stats.byStatus.RETURNED} loading={loading} />
           </div>
-        </CardContent>
-      </Card>
+        </MagicCard>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Shared goals</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <p className="text-sm text-muted-foreground">
-            Push organisation-wide goals to selected employees.
-          </p>
-          <Button asChild>
-            <Link to="/admin/shared-goals">Push a shared goal</Link>
-          </Button>
-        </CardContent>
-      </Card>
+        <MagicCard className="p-4">
+          <div className="text-sm font-medium mb-2">Approval rate</div>
+          {loading ? (
+            <div className="text-3xl font-semibold font-mono">—</div>
+          ) : (
+            <div className="text-3xl font-semibold font-mono">
+              <NumberTicker value={approvalRate} suffix="%" />
+            </div>
+          )}
+          <div className="text-xs text-muted-foreground mt-1">
+            of all sheets approved this cycle
+          </div>
+        </MagicCard>
+
+        <MagicCard className="md:col-span-3 p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="text-sm font-medium">Shared goals</div>
+              <p className="text-sm text-muted-foreground mt-1">
+                Push organisation-wide goals to selected employees.
+              </p>
+            </div>
+            <Button asChild>
+              <Link to="/admin/shared-goals">Push a shared goal</Link>
+            </Button>
+          </div>
+        </MagicCard>
+      </BentoGrid>
 
       <Dialog
         open={wizardOpen}
@@ -148,22 +164,23 @@ export default function AdminDashboard() {
   );
 }
 
-function Stat({
-  label,
-  value,
-  loading,
-  muted = false,
-}: {
-  label: string;
-  value: number;
-  loading: boolean;
-  muted?: boolean;
-}) {
+function StatTile({ label, value, loading }: { label: string; value: number; loading: boolean }) {
   return (
-    <div className={"border border-border p-3 " + (muted ? "bg-muted/30" : "")}>
+    <MagicCard className="p-4">
       <div className="text-xs text-muted-foreground uppercase tracking-wide">{label}</div>
-      <div className="text-xl font-semibold mt-1 font-mono tabular-nums">
-        {loading ? "—" : value}
+      <div className="text-3xl font-semibold mt-1 font-mono">
+        {loading ? "—" : <NumberTicker value={value} />}
+      </div>
+    </MagicCard>
+  );
+}
+
+function MiniStat({ label, value, loading }: { label: string; value: number; loading: boolean }) {
+  return (
+    <div className="border border-border rounded-md p-2">
+      <div className="text-[0.65rem] text-muted-foreground uppercase tracking-wide">{label}</div>
+      <div className="text-lg font-semibold mt-0.5 font-mono">
+        {loading ? "—" : <NumberTicker value={value} />}
       </div>
     </div>
   );

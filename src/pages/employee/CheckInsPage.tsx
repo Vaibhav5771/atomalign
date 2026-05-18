@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { useFocusRefresh } from "@/lib/use-focus-refresh";
 import { useAuthStore } from "@/stores/authStore";
 import { useGoalSheetStore, currentCycleYear } from "@/stores/goalSheetStore";
 import {
@@ -39,6 +40,14 @@ export default function CheckInsPage() {
   useEffect(() => {
     if (currentSheet?.status === "APPROVED") void fetchCheckIns(currentSheet.id);
   }, [currentSheet?.id, currentSheet?.status, fetchCheckIns]);
+
+  useFocusRefresh(() => {
+    if (!user) return;
+    void fetchMySheet(user.id, currentCycleYear).then(() => {
+      const sheet = useGoalSheetStore.getState().currentSheet;
+      if (sheet?.status === "APPROVED") void fetchCheckIns(sheet.id);
+    });
+  });
 
   const isApproved = currentSheet?.status === "APPROVED";
 

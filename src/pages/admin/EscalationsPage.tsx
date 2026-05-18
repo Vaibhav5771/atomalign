@@ -36,6 +36,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { BlurFade } from "@/components/ui/magicui/blur-fade";
+import { useFocusRefresh } from "@/lib/use-focus-refresh";
 import { useToast } from "@/hooks/use-toast";
 import { useEscalationsStore } from "@/stores/escalationsStore";
 import type {
@@ -99,6 +101,10 @@ export default function EscalationsPage() {
     void fetchRules();
     void fetchLog();
   }, [fetchRules, fetchLog]);
+
+  useFocusRefresh(() => {
+    void Promise.all([fetchRules(), fetchLog()]);
+  });
 
   const openCreate = () => {
     setEditingRule(null);
@@ -207,6 +213,7 @@ export default function EscalationsPage() {
 
         {/* ============ Tab 1 — Rules ========================================= */}
         <TabsContent value="rules" className="space-y-3">
+          <BlurFade>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-3">
               <div>
@@ -305,10 +312,12 @@ export default function EscalationsPage() {
               </div>
             </CardContent>
           </Card>
+          </BlurFade>
         </TabsContent>
 
         {/* ============ Tab 2 — Log =========================================== */}
         <TabsContent value="log" className="space-y-3">
+          <BlurFade>
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Escalation log</CardTitle>
@@ -405,6 +414,7 @@ export default function EscalationsPage() {
               </div>
             </CardContent>
           </Card>
+          </BlurFade>
         </TabsContent>
       </Tabs>
 

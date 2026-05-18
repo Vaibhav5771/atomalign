@@ -1,7 +1,10 @@
 import { useEffect } from "react";
+import { useFocusRefresh } from "@/lib/use-focus-refresh";
 import { useAuthStore } from "@/stores/authStore";
 import { useManagerStore } from "@/stores/managerStore";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { MagicCard } from "@/components/ui/magicui/magic-card";
+import { NumberTicker } from "@/components/ui/magicui/number-ticker";
 import { TeamTable } from "@/components/manager/TeamTable";
 
 export default function ManagerDashboard() {
@@ -11,6 +14,10 @@ export default function ManagerDashboard() {
   useEffect(() => {
     if (user) void fetchTeamSheets(user.id);
   }, [user, fetchTeamSheets]);
+
+  useFocusRefresh(() => {
+    if (user) void fetchTeamSheets(user.id);
+  });
 
   if (!user) return null;
 
@@ -27,9 +34,9 @@ export default function ManagerDashboard() {
       </div>
 
       <div className="grid grid-cols-3 gap-3 max-w-2xl">
-        <Stat label="Direct reports" value={String(teamSheets.length)} />
-        <Stat label="Pending review" value={String(submittedCount)} />
-        <Stat label="Approved" value={String(approvedCount)} />
+        <Stat label="Direct reports" value={teamSheets.length} />
+        <Stat label="Pending review" value={submittedCount} />
+        <Stat label="Approved" value={approvedCount} />
       </div>
 
       <Card>
@@ -48,11 +55,13 @@ export default function ManagerDashboard() {
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value }: { label: string; value: number }) {
   return (
-    <div className="border border-border p-3">
+    <MagicCard className="p-3">
       <div className="text-xs text-muted-foreground uppercase tracking-wide">{label}</div>
-      <div className="text-xl font-semibold mt-1 font-mono tabular-nums">{value}</div>
-    </div>
+      <div className="text-2xl font-semibold mt-1 font-mono">
+        <NumberTicker value={value} />
+      </div>
+    </MagicCard>
   );
 }

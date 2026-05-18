@@ -107,51 +107,63 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   init: async () => {
     if (get().initialized) return;
-    const { data } = await supabase.auth.getSession();
-    const session = data.session;
-    let profile: Profile | null = null;
-    if (session?.user) {
-      profile = await fetchProfile(session.user.id);
-    }
-    set({ session, user: profile, loading: false, initialized: true });
-
-    supabase.auth.onAuthStateChange(async (event, newSession) => {
-      if (newSession?.user) {
-        const isAzureSignIn =
-          event === "SIGNED_IN" &&
-          newSession.user.app_metadata?.provider === "azure" &&
-          !!newSession.provider_token;
-
-        if (isAzureSignIn) {
-          set({ syncing: true });
-          try {
-            await syncProfileFromGraph(newSession.user.id, newSession.provider_token!);
-          } catch (e) {
-            console.warn("[authStore] graph sync error", e);
-          }
-        }
-
-        const p = await fetchProfile(newSession.user.id);
-        set({ session: newSession, user: p, syncing: false });
-      } else {
-        set({ session: null, user: null, syncing: false });
+    try {
+      const { data } = await supabase.auth.getSession();
+      const session = data.session;
+      let profile: Profile | null = null;
+      if (session?.user) {
+        profile = await fetchProfile(session.user.id);
       }
-    });
+      set({ session, user: profile });
+
+      supabase.auth.onAuthStateChange(async (event, newSession) => {
+        if (newSession?.user) {
+          const isAzureSignIn =
+            event === "SIGNED_IN" &&
+            newSession.user.app_metadata?.provider === "azure" &&
+            !!newSession.provider_token;
+
+          if (isAzureSignIn) {
+            set({ syncing: true });
+            try {
+              await syncProfileFromGraph(newSession.user.id, newSession.provider_token!);
+            } catch (e) {
+              console.warn("[authStore] graph sync error", e);
+            }
+          }
+
+          const p = await fetchProfile(newSession.user.id);
+          set({ session: newSession, user: p, syncing: false });
+        } else {
+          set({ session: null, user: null, syncing: false });
+        }
+      });
+    } catch (e) {
+      console.error("[authStore] init error", e);
+    } finally {
+      // Always release the splash screen, even if init hung or threw.
+      set({ loading: false, initialized: true });
+    }
   },
 
   signIn: async (email, password) => {
     set({ loading: true });
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) {
+        return { error: error.message };
+      }
+      let profile: Profile | null = null;
+      if (data.session?.user) {
+        profile = await fetchProfile(data.session.user.id);
+      }
+      set({ session: data.session, user: profile });
+      return { error: null };
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : String(e) };
+    } finally {
       set({ loading: false });
-      return { error: error.message };
     }
-    let profile: Profile | null = null;
-    if (data.session?.user) {
-      profile = await fetchProfile(data.session.user.id);
-    }
-    set({ session: data.session, user: profile, loading: false });
-    return { error: null };
   },
 
   signInWithMicrosoft: async () => {

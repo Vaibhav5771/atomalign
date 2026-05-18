@@ -17,19 +17,25 @@ export const useAnalyticsStore = create<AnalyticsState>((set) => ({
 
   fetchAnalytics: async () => {
     set({ loading: true, error: null });
-    const { data, error } = await supabase
-      .from("analytics_summary")
-      .select("*");
-    if (error) {
-      set({ loading: false, error: error.message });
-      return;
+    try {
+      const { data, error } = await supabase
+        .from("analytics_summary")
+        .select("*");
+      if (error) {
+        set({ error: error.message });
+        return;
+      }
+      // Score arrives as numeric — coerce to number so chart math is safe.
+      const rows = (data ?? []).map((r) => ({
+        ...r,
+        score: r.score == null ? null : Number(r.score),
+      })) as AnalyticsRow[];
+      set({ summary: rows });
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
+    } finally {
+      set({ loading: false });
     }
-    // Score arrives as numeric — coerce to number so chart math is safe.
-    const rows = (data ?? []).map((r) => ({
-      ...r,
-      score: r.score == null ? null : Number(r.score),
-    })) as AnalyticsRow[];
-    set({ summary: rows, loading: false });
   },
 
   reset: () => set({ summary: [], loading: false, error: null }),

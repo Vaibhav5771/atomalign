@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { AnalyticsDashboard } from "@/components/admin/AnalyticsDashboard";
+import { useFocusRefresh } from "@/lib/use-focus-refresh";
 import { useAnalyticsStore } from "@/stores/analyticsStore";
 
 export default function AnalyticsPage() {
@@ -8,6 +9,10 @@ export default function AnalyticsPage() {
   useEffect(() => {
     void fetchAnalytics();
   }, [fetchAnalytics]);
+
+  useFocusRefresh(() => {
+    void fetchAnalytics();
+  });
 
   return (
     <div className="space-y-4 max-w-7xl">

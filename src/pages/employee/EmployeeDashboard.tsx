@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { Link } from "react-router-dom";
+import { useFocusRefresh } from "@/lib/use-focus-refresh";
 import { useAuthStore } from "@/stores/authStore";
 import { useGoalSheetStore, currentCycleYear } from "@/stores/goalSheetStore";
 import { Button } from "@/components/ui/button";
@@ -10,6 +11,9 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { MagicCard } from "@/components/ui/magicui/magic-card";
+import { NumberTicker } from "@/components/ui/magicui/number-ticker";
+import { AnimatedCircularProgress } from "@/components/ui/magicui/animated-circular-progress";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 
 export default function EmployeeDashboard() {
@@ -20,6 +24,10 @@ export default function EmployeeDashboard() {
   useEffect(() => {
     if (user) void fetchMySheet(user.id, currentCycleYear);
   }, [user, fetchMySheet]);
+
+  useFocusRefresh(() => {
+    if (user) void fetchMySheet(user.id, currentCycleYear);
+  });
 
   if (!user) return null;
 
@@ -58,15 +66,27 @@ export default function EmployeeDashboard() {
           ) : (
             <>
               <div className="grid grid-cols-3 gap-4">
-                <Stat label="Goals" value={String(goalCount)} />
-                <Stat label="Weightage" value={`${total}%`} />
-                <Stat
-                  label="Last update"
-                  value={new Date(currentSheet.updated_at).toLocaleDateString()}
-                />
+                <Stat label="Goals" value={goalCount} />
+                <Stat label="Weightage" value={total} suffix="%" />
+                <div className="border border-border rounded-lg p-3 flex items-center gap-3">
+                  <AnimatedCircularProgress
+                    value={total}
+                    size={56}
+                    strokeWidth={6}
+                    label="Weightage filled"
+                  />
+                  <div>
+                    <div className="text-xs text-muted-foreground uppercase tracking-wide">
+                      Last update
+                    </div>
+                    <div className="text-sm font-mono mt-0.5">
+                      {new Date(currentSheet.updated_at).toLocaleDateString()}
+                    </div>
+                  </div>
+                </div>
               </div>
               {currentSheet.status === "RETURNED" && currentSheet.manager_remark && (
-                <div className="border border-amber-300 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-sm">
+                <div className="border border-amber-300 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-sm rounded">
                   <div className="font-medium text-amber-800 dark:text-amber-200">
                     Manager feedback
                   </div>
@@ -95,11 +115,13 @@ export default function EmployeeDashboard() {
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, suffix }: { label: string; value: number; suffix?: string }) {
   return (
-    <div className="border border-border p-3">
+    <MagicCard className="p-3">
       <div className="text-xs text-muted-foreground uppercase tracking-wide">{label}</div>
-      <div className="text-xl font-semibold mt-1 font-mono tabular-nums">{value}</div>
-    </div>
+      <div className="text-2xl font-semibold mt-1 font-mono">
+        <NumberTicker value={value} suffix={suffix} />
+      </div>
+    </MagicCard>
   );
 }

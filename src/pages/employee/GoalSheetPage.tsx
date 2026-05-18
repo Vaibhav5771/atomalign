@@ -1,9 +1,11 @@
 import { useEffect } from "react";
 import { Link } from "react-router-dom";
+import { useFocusRefresh } from "@/lib/use-focus-refresh";
 import { useAuthStore } from "@/stores/authStore";
 import { useGoalSheetStore, currentCycleYear } from "@/stores/goalSheetStore";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { BlurFade } from "@/components/ui/magicui/blur-fade";
 import { GoalList } from "@/components/goals/GoalList";
 import { WeightageBar } from "@/components/goals/WeightageBar";
 import { StatusBadge } from "@/components/shared/StatusBadge";
@@ -23,6 +25,10 @@ export default function GoalSheetPage() {
   useEffect(() => {
     if (user) void fetchMySheet(user.id, currentCycleYear);
   }, [user, fetchMySheet]);
+
+  useFocusRefresh(() => {
+    if (user) void fetchMySheet(user.id, currentCycleYear);
+  });
 
   if (!user) return null;
 
@@ -75,22 +81,26 @@ export default function GoalSheetPage() {
         </div>
       )}
 
-      <Card>
-        <CardContent className="pt-6">
-          <WeightageBar total={totalWeightage()} />
-        </CardContent>
-      </Card>
+      <BlurFade>
+        <Card>
+          <CardContent className="pt-6">
+            <WeightageBar total={totalWeightage()} />
+          </CardContent>
+        </Card>
+      </BlurFade>
 
-      <Card>
-        <CardContent className="pt-6">
-          <GoalList
-            goals={goals}
-            sharedAssignments={sharedAssignments}
-            sharerProfiles={sharerProfiles}
-            editable={false}
-          />
-        </CardContent>
-      </Card>
+      <BlurFade delay={0.08}>
+        <Card>
+          <CardContent className="pt-6">
+            <GoalList
+              goals={goals}
+              sharedAssignments={sharedAssignments}
+              sharerProfiles={sharerProfiles}
+              editable={false}
+            />
+          </CardContent>
+        </Card>
+      </BlurFade>
     </div>
   );
 }

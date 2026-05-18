@@ -1,15 +1,18 @@
 import { useState } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
-import { Loader2, LogOut } from "lucide-react";
+import { Loader2, LogOut, Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { RoleBadge } from "@/components/shared/RoleBadge";
+import { DotPattern } from "@/components/ui/magicui/dot-pattern";
+import { useTheme } from "@/lib/theme-provider";
 import { useAuthStore } from "@/stores/authStore";
 
 export function AppShell() {
   const user = useAuthStore((s) => s.user);
   const signOut = useAuthStore((s) => s.signOut);
   const navigate = useNavigate();
+  const { theme, toggleTheme } = useTheme();
   const [signingOut, setSigningOut] = useState(false);
 
   const handleSignOut = async () => {
@@ -32,6 +35,18 @@ export function AppShell() {
             <Button
               variant="ghost"
               size="sm"
+              onClick={toggleTheme}
+              aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            >
+              {theme === "dark" ? (
+                <Sun className="h-4 w-4" />
+              ) : (
+                <Moon className="h-4 w-4" />
+              )}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={handleSignOut}
               disabled={signingOut}
             >
@@ -44,8 +59,11 @@ export function AppShell() {
             </Button>
           </div>
         </header>
-        <main className="flex-1 p-6 overflow-auto">
-          <Outlet />
+        <main className="relative flex-1 overflow-auto">
+          <DotPattern className="text-foreground/[0.06] [mask-image:radial-gradient(ellipse_at_center,white,transparent_75%)]" />
+          <div className="relative p-6">
+            <Outlet />
+          </div>
         </main>
       </div>
     </div>

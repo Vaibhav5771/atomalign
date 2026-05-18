@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useFocusRefresh } from "@/lib/use-focus-refresh";
 import { useAuthStore } from "@/stores/authStore";
 import { useManagerStore } from "@/stores/managerStore";
 import {
@@ -39,6 +40,11 @@ export default function ManagerCheckInsPage() {
   useEffect(() => {
     if (user) void fetchTeamSheets(user.id);
   }, [user, fetchTeamSheets]);
+
+  useFocusRefresh(() => {
+    if (user) void fetchTeamSheets(user.id);
+    if (employeeId) void fetchTeamCheckIns(employeeId, quarter);
+  });
 
   // Deduplicate employees from teamSheets (one entry per employee).
   const employees = (() => {
