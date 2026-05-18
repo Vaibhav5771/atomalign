@@ -11,7 +11,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import type { GoalWithCheckIn, Quarter } from "@/types";
 
@@ -52,7 +51,6 @@ interface CommentCellProps {
 }
 
 function CommentCell({ row, onSaveComment }: CommentCellProps) {
-  const { toast } = useToast();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(row.checkIn?.manager_comment ?? "");
   const [saving, setSaving] = useState(false);
@@ -75,12 +73,12 @@ function CommentCell({ row, onSaveComment }: CommentCellProps) {
           setDraft(row.checkIn?.manager_comment ?? "");
           setEditing(true);
         }}
-        className="h-auto py-1 px-1.5 w-full justify-start font-normal text-left whitespace-normal"
+        className="h-auto w-full justify-start whitespace-normal rounded-sm px-1.5 py-1 text-left font-normal"
       >
         {row.checkIn.manager_comment ? (
           <span className="whitespace-pre-wrap">{row.checkIn.manager_comment}</span>
         ) : (
-          <span className="text-muted-foreground italic">Click to add comment…</span>
+          <span className="italic text-muted-foreground">Click to add comment…</span>
         )}
       </Button>
     );
@@ -93,12 +91,10 @@ function CommentCell({ row, onSaveComment }: CommentCellProps) {
     setSaving(true);
     const { error } = await onSaveComment(row.checkIn.id, draft.trim());
     setSaving(false);
-    if (error) {
-      toast({ title: "Could not save comment", description: error, variant: "destructive" });
-    } else {
-      toast({ title: hasExisting ? "Comment updated" : "Comment saved" });
-      setEditing(false);
-    }
+    // Parent owns the success/error outcome dialog. Close the editor on
+    // success, keep it open on error so the manager can retry without
+    // losing the draft.
+    if (!error) setEditing(false);
   };
 
   return (
@@ -117,10 +113,17 @@ function CommentCell({ row, onSaveComment }: CommentCellProps) {
           variant="ghost"
           onClick={() => setEditing(false)}
           disabled={saving}
+          className="rounded-sm"
         >
           Cancel
         </Button>
-        <Button type="button" size="sm" onClick={save} disabled={saving}>
+        <Button
+          type="button"
+          size="sm"
+          onClick={save}
+          disabled={saving}
+          className="rounded-sm"
+        >
           {saving && <Loader2 className="h-3 w-3 mr-1 animate-spin" />}
           {saving
             ? hasExisting
@@ -138,14 +141,14 @@ function CommentCell({ row, onSaveComment }: CommentCellProps) {
 export function ManagerCheckInView({ rows, quarter, onSaveComment }: Props) {
   if (rows.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+      <div className="rounded-md border border-dashed border-border/60 bg-card p-8 text-center text-sm text-muted-foreground">
         No approved goals to review.
       </div>
     );
   }
 
   return (
-    <div className="rounded-lg border border-border bg-card overflow-hidden">
+    <div className="overflow-hidden rounded-md border border-border/60 bg-card">
       <Table>
         <TableHeader>
           <TableRow>
@@ -162,7 +165,7 @@ export function ManagerCheckInView({ rows, quarter, onSaveComment }: Props) {
         <TableBody>
           {rows.map((row) => (
             <TableRow key={row.goal.id}>
-              <TableCell className="font-medium align-top">{row.goal.title}</TableCell>
+              <TableCell className="align-top font-medium">{row.goal.title}</TableCell>
               <TableCell className="align-top text-sm text-muted-foreground">
                 {row.goal.thrust_area}
               </TableCell>

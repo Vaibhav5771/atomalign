@@ -37,11 +37,11 @@ export default function GoalSheetPage() {
   if (!currentSheet) {
     return (
       <div className="max-w-xl space-y-3">
-        <h1 className="text-2xl font-semibold">My goal sheet</h1>
-        <p className="text-sm text-muted-foreground">
+        <h1 className="text-2xl font-semibold tracking-tight leading-tight">My goal sheet</h1>
+        <p className="text-sm text-muted-foreground max-w-2xl">
           You don't have a goal sheet for cycle {currentCycleYear} yet.
         </p>
-        <Button asChild>
+        <Button asChild className="rounded-sm">
           <Link to="/employee/goals/new">Create goal sheet</Link>
         </Button>
       </div>
@@ -52,45 +52,51 @@ export default function GoalSheetPage() {
 
   return (
     <div className="space-y-5 max-w-5xl">
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">My goal sheet — {currentCycleYear}</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {currentSheet.submitted_at &&
-              `Submitted on ${new Date(currentSheet.submitted_at).toLocaleDateString()}`}
-            {currentSheet.approved_at &&
-              ` · Approved on ${new Date(currentSheet.approved_at).toLocaleDateString()}`}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <StatusBadge status={currentSheet.status} />
-          {editable && (
-            <Button asChild size="sm">
-              <Link to="/employee/goals/new">Edit</Link>
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {currentSheet.manager_remark && (
-        <div className="border border-amber-300 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-sm">
-          <div className="font-medium text-amber-800 dark:text-amber-200">Manager remark</div>
-          <div className="text-amber-900 dark:text-amber-100 mt-0.5">
-            {currentSheet.manager_remark}
+      <BlurFade>
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight leading-tight">
+              My goal sheet — {currentCycleYear}
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
+              {currentSheet.submitted_at &&
+                `Submitted on ${new Date(currentSheet.submitted_at).toLocaleDateString()}`}
+              {currentSheet.approved_at &&
+                ` · Approved on ${new Date(currentSheet.approved_at).toLocaleDateString()}`}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <StatusBadge status={currentSheet.status} />
+            {editable && (
+              <Button asChild size="sm" className="rounded-sm">
+                <Link to="/employee/goals/new">Edit</Link>
+              </Button>
+            )}
           </div>
         </div>
+      </BlurFade>
+
+      {currentSheet.manager_remark && (
+        <BlurFade delay={0.04}>
+          <div className="rounded-md border border-primary/40 bg-primary/[0.12] px-3 py-2 text-sm">
+            <div className="font-medium text-primary">Manager remark</div>
+            <div className="text-foreground/90 mt-0.5">
+              {currentSheet.manager_remark}
+            </div>
+          </div>
+        </BlurFade>
       )}
 
-      <BlurFade>
-        <Card>
+      <BlurFade delay={0.08}>
+        <Card className="rounded-md border-border/60 bg-card">
           <CardContent className="pt-6">
             <WeightageBar total={totalWeightage()} />
           </CardContent>
         </Card>
       </BlurFade>
 
-      <BlurFade delay={0.08}>
-        <Card>
+      <BlurFade delay={0.12}>
+        <Card className="rounded-md border-border/60 bg-card">
           <CardContent className="pt-6">
             <GoalList
               goals={goals}

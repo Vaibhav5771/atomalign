@@ -19,7 +19,7 @@ function formatDate(iso: string | null) {
 export function TeamTable({ rows }: { rows: GoalSheetWithEmployee[] }) {
   if (rows.length === 0) {
     return (
-      <div className="border border-dashed border-border rounded-none p-6 text-center text-sm text-muted-foreground">
+      <div className="rounded-md border border-dashed border-border/60 bg-card p-6 text-center text-sm text-muted-foreground">
         No direct reports found.
       </div>
     );
@@ -53,7 +53,7 @@ export function TeamTable({ rows }: { rows: GoalSheetWithEmployee[] }) {
                     <StatusBadge status={r.status} />
                     {r.reopened_by && (
                       <span
-                        className="text-[10px] px-1.5 py-0.5 border border-amber-400 bg-amber-50 text-amber-800 font-medium uppercase tracking-wide"
+                        className="rounded-sm border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-destructive"
                         title="Sheet was reopened by admin"
                       >
                         Reopened
@@ -67,11 +67,11 @@ export function TeamTable({ rows }: { rows: GoalSheetWithEmployee[] }) {
               <TableCell className="text-sm">{formatDate(r.submitted_at)}</TableCell>
               <TableCell className="text-right">
                 {reviewable ? (
-                  <Button asChild size="sm">
+                  <Button asChild size="sm" className="rounded-sm">
                     <Link to={`/manager/review/${r.id}`}>Review</Link>
                   </Button>
                 ) : (
-                  <Button size="sm" variant="outline" disabled>
+                  <Button size="sm" variant="outline" disabled className="rounded-sm">
                     {r.status === "DRAFT" && hasSheet ? "Awaiting submission" : "—"}
                   </Button>
                 )}

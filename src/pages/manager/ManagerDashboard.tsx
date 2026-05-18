@@ -5,6 +5,7 @@ import { useManagerStore } from "@/stores/managerStore";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatCard } from "@/components/shared/StatCard";
 import { NumberTicker } from "@/components/ui/magicui/number-ticker";
+import { BlurFade } from "@/components/ui/magicui/blur-fade";
 import { TeamTable } from "@/components/manager/TeamTable";
 
 export default function ManagerDashboard() {
@@ -26,31 +27,37 @@ export default function ManagerDashboard() {
 
   return (
     <div className="space-y-5 max-w-5xl">
-      <div>
-        <h1 className="text-2xl font-semibold">Team</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Review and approve direct reports' goal sheets.
-        </p>
-      </div>
+      <BlurFade>
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight leading-tight">Team</h1>
+          <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
+            Review and approve direct reports' goal sheets.
+          </p>
+        </div>
+      </BlurFade>
 
-      <div className="grid grid-cols-3 gap-3 max-w-2xl">
-        <Stat label="Direct reports" value={teamSheets.length} />
-        <Stat label="Pending review" value={submittedCount} />
-        <Stat label="Approved" value={approvedCount} />
-      </div>
+      <BlurFade delay={0.05}>
+        <div className="grid grid-cols-3 gap-3 max-w-2xl">
+          <Stat label="Direct reports" value={teamSheets.length} />
+          <Stat label="Pending review" value={submittedCount} />
+          <Stat label="Approved" value={approvedCount} />
+        </div>
+      </BlurFade>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Direct reports</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <p className="text-sm text-muted-foreground">Loading…</p>
-          ) : (
-            <TeamTable rows={teamSheets} />
-          )}
-        </CardContent>
-      </Card>
+      <BlurFade delay={0.1}>
+        <Card className="rounded-md border-border/60 bg-card">
+          <CardHeader>
+            <CardTitle className="text-base">Direct reports</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <p className="text-sm text-muted-foreground">Loading…</p>
+            ) : (
+              <TeamTable rows={teamSheets} />
+            )}
+          </CardContent>
+        </Card>
+      </BlurFade>
     </div>
   );
 }

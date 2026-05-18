@@ -246,7 +246,7 @@ export function GoalForm({ initial, onSubmit, onCancel, submitLabel = "Add goal"
                 type="button"
                 variant={direction === "HIGHER" ? "default" : "outline"}
                 size="sm"
-                className="flex-1"
+                className="flex-1 rounded-sm"
                 onClick={() => setValue("direction", "HIGHER", { shouldValidate: true })}
                 title="Score = Achievement ÷ Target. Use for grow-metrics like revenue or NPS."
               >
@@ -256,7 +256,7 @@ export function GoalForm({ initial, onSubmit, onCancel, submitLabel = "Add goal"
                 type="button"
                 variant={direction === "LOWER" ? "default" : "outline"}
                 size="sm"
-                className="flex-1"
+                className="flex-1 rounded-sm"
                 onClick={() => setValue("direction", "LOWER", { shouldValidate: true })}
                 title="Score = Target ÷ Achievement. Use for shrink-metrics like cost, TAT, or defects."
               >
@@ -287,10 +287,10 @@ export function GoalForm({ initial, onSubmit, onCancel, submitLabel = "Add goal"
       </div>
 
       <div className="flex justify-end gap-2 pt-1">
-        <Button type="button" variant="outline" onClick={onCancel}>
+        <Button type="button" variant="outline" onClick={onCancel} className="rounded-sm">
           Cancel
         </Button>
-        <Button type="submit" disabled={isSubmitting}>
+        <Button type="submit" disabled={isSubmitting} className="rounded-sm">
           {isSubmitting && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
           {isSubmitting ? "Saving…" : submitLabel}
         </Button>

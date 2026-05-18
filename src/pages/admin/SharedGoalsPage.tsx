@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, CalendarIcon, Lock } from "lucide-react";
+import { Loader2, CalendarIcon, Lock, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import { DotLottieReact } from "@lottiefiles/dotlottie-react";
 import { supabase } from "@/lib/supabase";
@@ -127,6 +127,9 @@ interface PastSharedGoal {
   created_at: string;
   recipientCount: number;
   recipientNames: string[];
+  // Every underlying goals.id that belongs to this shared-goal group.
+  // Used by the delete flow to wipe all N recipient rows in one statement.
+  goal_ids: string[];
 }
 
 export default function SharedGoalsPage() {
@@ -144,6 +147,10 @@ export default function SharedGoalsPage() {
   const [pastOpen, setPastOpen] = useState(false);
   const [pastGoals, setPastGoals] = useState<PastSharedGoal[]>([]);
   const [pastLoading, setPastLoading] = useState(false);
+  // Delete-a-pushed-shared-goal flow. Admin-only — gated by the
+  // `goals_delete_admin` RLS policy added in migration 0003.
+  const [deletingPast, setDeletingPast] = useState<PastSharedGoal | null>(null);
+  const [deletingPastBusy, setDeletingPastBusy] = useState(false);
   // Outcome dialog shown after the push completes. status drives icon, copy,
   // and CTA label (OK on success, Close on error).
   const [result, setResult] = useState<{
@@ -224,6 +231,7 @@ export default function SharedGoalsPage() {
           if (existing) {
             existing.recipientCount += 1;
             existing.recipientNames.push(recipient);
+            existing.goal_ids.push(r.id);
           } else {
             groups.set(key, {
               key,
@@ -237,6 +245,7 @@ export default function SharedGoalsPage() {
               created_at: r.created_at,
               recipientCount: 1,
               recipientNames: [recipient],
+              goal_ids: [r.id],
             });
           }
         }
@@ -447,6 +456,41 @@ export default function SharedGoalsPage() {
         message: "All selected recipients were skipped.",
       });
     }
+  };
+
+  // Wipe a shared-goal group from every recipient's sheet. The
+  // `goals_delete_admin` RLS policy added in migration 0003 lets this hit.
+  // Cascade behaviour (per migration 0001 + 0004): check_ins.goal_id cascades
+  // (recorded actuals on this goal are deleted), audit_logs.goal_id is set
+  // null (audit row preserved). Recipients whose sheets are APPROVED will
+  // drop below the weightage = 100% invariant and need an admin reopen so
+  // the employee can rebalance.
+  const executeDeletePast = async () => {
+    if (!deletingPast) return;
+    setDeletingPastBusy(true);
+    const { error } = await supabase
+      .from("goals")
+      .delete()
+      .in("id", deletingPast.goal_ids);
+    setDeletingPastBusy(false);
+    const target = deletingPast;
+    setDeletingPast(null);
+    if (error) {
+      setResult({
+        status: "error",
+        title: "Could not remove shared goal",
+        message: error.message,
+      });
+      return;
+    }
+    setPastGoals((prev) => prev.filter((g) => g.key !== target.key));
+    setResult({
+      status: "success",
+      title: "Shared goal removed",
+      message: `Removed "${target.title}" from ${target.recipientCount} ${
+        target.recipientCount === 1 ? "recipient" : "recipients"
+      }. Reopen any approved sheets so the employee can rebalance to 100%.`,
+    });
   };
 
   const allSelected = employees.length > 0 && selected.size === employees.length;
@@ -1043,8 +1087,20 @@ export default function SharedGoalsPage() {
                         </div>
                       )}
                     </div>
-                    <div className="text-[0.65rem] text-muted-foreground tabular-nums shrink-0">
-                      {format(new Date(g.created_at), "PP")}
+                    <div className="flex items-center gap-2 shrink-0">
+                      <div className="text-[0.65rem] text-muted-foreground tabular-nums">
+                        {format(new Date(g.created_at), "PP")}
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => setDeletingPast(g)}
+                        aria-label={`Remove shared goal "${g.title}"`}
+                        className="rounded-sm text-destructive hover:text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -1099,6 +1155,57 @@ export default function SharedGoalsPage() {
               onClick={() => setPastOpen(false)}
             >
               Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* -------------------- Delete a past shared goal confirm ------------- */}
+      <Dialog
+        open={!!deletingPast}
+        onOpenChange={(o) => {
+          if (!deletingPastBusy && !o) setDeletingPast(null);
+        }}
+      >
+        <DialogContent
+          showCloseButton={false}
+          className="overflow-hidden rounded-md border border-border/60 bg-card p-5 text-foreground shadow-2xl shadow-black/40 sm:max-w-md"
+        >
+          <DialogHeader className="items-center text-center">
+            <DialogTitle className="text-lg font-semibold tracking-tight">
+              Remove this shared goal?
+            </DialogTitle>
+            <DialogDescription className="text-sm text-muted-foreground">
+              Wipes <strong>{deletingPast?.title}</strong> from{" "}
+              {deletingPast?.recipientCount}{" "}
+              {deletingPast?.recipientCount === 1 ? "recipient's" : "recipients'"}{" "}
+              sheet
+              {deletingPast?.recipientCount === 1 ? "" : "s"}. Any check-ins
+              recorded against this goal are deleted (audit log entries are
+              preserved). Approved sheets will drop below 100% weightage —
+              reopen them so the employee can rebalance. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter className="mt-4 gap-2 sm:gap-2 sm:justify-center">
+            <Button
+              variant="ghost"
+              className="rounded-sm"
+              disabled={deletingPastBusy}
+              onClick={() => setDeletingPast(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              className="rounded-sm"
+              disabled={deletingPastBusy}
+              onClick={() => void executeDeletePast()}
+            >
+              {deletingPastBusy && (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              )}
+              {deletingPastBusy ? "Removing…" : "Yes, remove from all"}
             </Button>
           </DialogFooter>
         </DialogContent>

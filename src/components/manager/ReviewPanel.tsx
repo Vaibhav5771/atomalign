@@ -79,7 +79,7 @@ function InlineNumber({
         }
       />
       {status === "saving" && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
-      {status === "saved" && <Check className="h-3 w-3 text-green-600" />}
+      {status === "saved" && <Check className="h-3 w-3 text-primary" />}
     </div>
   );
 }
@@ -128,7 +128,7 @@ function InlineText({
         }
       />
       {status === "saving" && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
-      {status === "saved" && <Check className="h-3 w-3 text-green-600" />}
+      {status === "saved" && <Check className="h-3 w-3 text-primary" />}
     </div>
   );
 }
@@ -139,8 +139,8 @@ export function ReviewPanel({ goals, readOnly, onInlineUpdate }: Props) {
   return (
     <div className="space-y-3">
       {!readOnly && (
-        <div className="border border-primary/30 bg-primary/5 px-3 py-2 text-xs flex items-center gap-2">
-          <Pencil className="h-3.5 w-3.5 text-primary" />
+        <div className="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/[0.08] px-3 py-2 text-xs">
+          <Pencil className="h-3.5 w-3.5 text-primary shrink-0" />
           <span>
             Click the highlighted <span className="font-medium text-foreground">Target</span> or{" "}
             <span className="font-medium text-foreground">Weightage</span> cells to edit. Changes
@@ -208,7 +208,7 @@ export function ReviewPanel({ goals, readOnly, onInlineUpdate }: Props) {
         <span
           className={
             "font-mono tabular-nums font-medium " +
-            (total === 100 ? "text-green-700" : "text-destructive")
+            (total === 100 ? "text-primary" : "text-destructive")
           }
         >
           {total}%

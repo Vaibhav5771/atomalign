@@ -10,7 +10,7 @@ interface Props {
 export function QuarterSelector({ activeQuarter, onQuarterChange }: Props) {
   const now = currentQuarter();
   return (
-    <div className="inline-flex gap-1 rounded-md border border-border bg-card p-1">
+    <div className="inline-flex gap-1 rounded-md border border-border/60 bg-card p-1">
       {QUARTERS.map((q) => {
         const isActive = q === activeQuarter;
         const isCurrent = q === now;
@@ -23,11 +23,11 @@ export function QuarterSelector({ activeQuarter, onQuarterChange }: Props) {
             onClick={() => onQuarterChange(q)}
             title={QUARTER_LABELS[q]}
             aria-pressed={isActive}
-            className="relative px-4"
+            className="relative rounded-sm px-4"
           >
             {q}
             {isCurrent && !isActive && (
-              <span className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-emerald-500" />
+              <span className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-primary" />
             )}
           </Button>
         );

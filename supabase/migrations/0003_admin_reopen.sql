@@ -29,3 +29,19 @@ create policy goals_update_admin on public.goals
   for update to authenticated
   using (public.current_role() = 'ADMIN')
   with check (public.current_role() = 'ADMIN');
+
+-- 3. Admin can delete any goal. Used by the "Past shared goals" dialog in
+--    /admin/shared-goals to remove a pushed shared goal from every
+--    recipient's sheet in one shot. Without this, supabase.delete() silently
+--    affects 0 rows because the only other delete policy (goals_delete_employee)
+--    never matches an admin's auth.uid().
+--
+--    FK cascade behaviour on delete:
+--      check_ins.goal_id   → CASCADE  (recorded actuals on this goal are wiped)
+--      audit_logs.goal_id  → SET NULL (audit row preserved; goal link cleared)
+--      shared_goals.source_goal_id → CASCADE (unused link table, no-op today)
+drop policy if exists goals_delete_admin on public.goals;
+
+create policy goals_delete_admin on public.goals
+  for delete to authenticated
+  using (public.current_role() = 'ADMIN');

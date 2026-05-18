@@ -9,20 +9,17 @@ import { cyclePhase } from "@/lib/utils";
 export function CyclePhaseBanner() {
   const phase = cyclePhase();
   const isGoalSetting = phase.phase === "GOAL_SETTING";
-  const palette = isGoalSetting
-    ? "border-blue-200 bg-blue-50 text-blue-900"
-    : "border-emerald-200 bg-emerald-50 text-emerald-900";
   const Icon = isGoalSetting ? Info : CalendarClock;
 
   return (
     <div
       role="status"
-      className={`flex items-start gap-3 rounded-md border px-4 py-3 ${palette}`}
+      className="flex items-start gap-3 rounded-md border border-primary/30 bg-primary/[0.08] px-4 py-3 text-foreground"
     >
-      <Icon className="h-4 w-4 mt-0.5 shrink-0" />
+      <Icon className="h-4 w-4 mt-0.5 shrink-0 text-primary" />
       <div className="text-sm">
         <span className="font-medium">{phase.label}.</span>{" "}
-        <span className="opacity-80">{phase.nextHint}</span>
+        <span className="text-muted-foreground">{phase.nextHint}</span>
       </div>
     </div>
   );

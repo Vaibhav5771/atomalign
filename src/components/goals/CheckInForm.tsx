@@ -11,7 +11,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useToast } from "@/hooks/use-toast";
 import { CheckInScoreCard } from "@/components/goals/CheckInScoreCard";
 import { computeGoalScore } from "@/lib/utils";
 import type { CheckIn, CheckInStatus, Goal, Quarter } from "@/types";
@@ -58,7 +57,6 @@ export function CheckInForm({
   disabledReason,
   onSave,
 }: Props) {
-  const { toast } = useToast();
   const [actual, setActual] = useState<string>(checkIn?.actual ?? "");
   const [actualDate, setActualDate] = useState<string>(checkIn?.actual_date ?? "");
   const [status, setStatus] = useState<CheckInStatus>(checkIn?.status ?? "NOT_STARTED");
@@ -96,23 +94,19 @@ export function CheckInForm({
   const handleSave = async () => {
     if (!canSave) return;
     setSaving(true);
-    const { error } = await onSave(
+    await onSave(
       goal.id,
       quarter,
       goal.uom === "TIMELINE" ? null : actual.trim(),
       goal.uom === "TIMELINE" ? actualDate : null,
       status,
     );
+    // Outcome (success / error Lottie) is surfaced by the parent CheckInsPage.
     setSaving(false);
-    if (error) {
-      toast({ title: "Could not save check-in", description: error, variant: "destructive" });
-    } else {
-      toast({ title: "Check-in saved", description: `${goal.title} · ${quarter}` });
-    }
   };
 
   return (
-    <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+    <div className="rounded-md border border-border/60 bg-card p-4 space-y-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-sm font-semibold truncate">{goal.title}</div>
@@ -127,16 +121,16 @@ export function CheckInForm({
       </div>
 
       {goal.uom === "TIMELINE" && (
-        <div className="rounded-md border border-sky-300 bg-sky-50 dark:bg-sky-900/20 px-3 py-2 text-xs text-sky-900 dark:text-sky-100">
-          <span className="font-medium">Timeline goal:</span> set the actual
+        <div className="rounded-md border border-primary/30 bg-primary/[0.08] px-3 py-2 text-xs text-foreground/90">
+          <span className="font-medium text-primary">Timeline goal:</span> set the actual
           completion date in the quarter you finished. The score compares it
           against the deadline ({goal.target_date ?? "—"}) — same value across
           quarters once set. Quarters where work was not yet done can stay empty.
         </div>
       )}
       {goal.uom === "ZERO" && (
-        <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-xs text-amber-900 dark:text-amber-100">
-          <span className="font-medium">Zero-based goal:</span> enter the count
+        <div className="rounded-md border border-destructive/30 bg-destructive/[0.08] px-3 py-2 text-xs text-foreground/90">
+          <span className="font-medium text-destructive">Zero-based goal:</span> enter the count
           of incidents/defects that occurred during this quarter. Score is 100%
           only if the count is exactly 0.
         </div>
@@ -191,7 +185,7 @@ export function CheckInForm({
             type="button"
             onClick={handleSave}
             disabled={!canSave}
-            className="w-full"
+            className="w-full rounded-sm"
           >
             {saving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
             {saving ? "Saving…" : checkIn ? "Update" : "Save"}
@@ -208,7 +202,7 @@ export function CheckInForm({
       />
 
       {checkIn?.manager_comment && (
-        <div className="rounded-md bg-muted/50 border border-border px-3 py-2">
+        <div className="rounded-md border border-border/60 bg-muted/50 px-3 py-2">
           <div className="text-xs font-medium text-muted-foreground mb-0.5">Manager comment</div>
           <div className="text-sm whitespace-pre-wrap">{checkIn.manager_comment}</div>
         </div>

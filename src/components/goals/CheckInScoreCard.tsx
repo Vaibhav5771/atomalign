@@ -29,7 +29,7 @@ function formatTarget(goal: Pick<Goal, "uom" | "target" | "target_date">) {
 
 export function CheckInScoreCard({ goal, quarter, actual, actualDate, score }: Props) {
   return (
-    <div className="flex items-center gap-3 rounded-md border border-border bg-card px-3 py-2">
+    <div className="flex items-center gap-3 rounded-md border border-border/60 bg-card px-3 py-2">
       <Badge variant="secondary">{goal.uom}</Badge>
       <span className="text-xs text-muted-foreground">{QUARTER_LABELS[quarter]}</span>
       <div className="ml-auto flex items-center gap-4 text-sm">

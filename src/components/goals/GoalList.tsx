@@ -14,6 +14,8 @@ import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -48,26 +50,31 @@ export function GoalList({
   onUpdateSharedWeightage,
 }: Props) {
   const [editing, setEditing] = useState<Goal | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<Goal | null>(null);
+  const [deletePending, setDeletePending] = useState(false);
 
   const handleEditSubmit = async (draft: GoalDraft) => {
     if (!editing || !onUpdate) return;
     const { error } = await onUpdate(editing.id, draft);
+    // Close on success; on error keep the dialog open so the user keeps their
+    // edits while the parent's outcome dialog surfaces the failure on top.
     if (!error) setEditing(null);
   };
 
-  const handleDeleteClick = async (id: string) => {
-    if (!onDelete) return;
-    setDeletingId(id);
-    await onDelete(id);
-    setDeletingId(null);
+  const handleConfirmDelete = async () => {
+    if (!deleting || !onDelete) return;
+    setDeletePending(true);
+    const target = deleting;
+    await onDelete(target.id);
+    setDeletePending(false);
+    setDeleting(null);
   };
 
   const rowCount = goals.length + sharedAssignments.length;
 
   if (rowCount === 0) {
     return (
-      <div className="border border-dashed border-border rounded-none p-6 text-center text-sm text-muted-foreground">
+      <div className="rounded-md border border-dashed border-border/60 bg-card p-6 text-center text-sm text-muted-foreground">
         No goals yet. Add your first goal above.
       </div>
     );
@@ -148,8 +155,9 @@ export function GoalList({
                       <Button
                         variant="ghost"
                         size="sm"
+                        className="rounded-sm"
                         onClick={() => setEditing(g)}
-                        disabled={deletingId === g.id}
+                        disabled={deleting?.id === g.id}
                       >
                         <Pencil className="h-3.5 w-3.5" />
                       </Button>
@@ -158,14 +166,11 @@ export function GoalList({
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => void handleDeleteClick(g.id)}
-                        disabled={deletingId === g.id}
+                        className="rounded-sm"
+                        onClick={() => setDeleting(g)}
+                        disabled={deleting?.id === g.id}
                       >
-                        {deletingId === g.id ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-3.5 w-3.5" />
-                        )}
+                        <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     )}
                   </div>
@@ -219,10 +224,16 @@ export function GoalList({
         </TableBody>
       </Table>
 
+      {/* -------------------- Edit goal dialog ----------------------------- */}
       <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl overflow-hidden rounded-md border border-border/60 bg-card p-5 text-foreground shadow-2xl shadow-black/40">
           <DialogHeader>
-            <DialogTitle>Edit goal</DialogTitle>
+            <DialogTitle className="text-xl font-semibold tracking-tight leading-tight">
+              Edit goal
+            </DialogTitle>
+            <DialogDescription className="text-sm text-muted-foreground">
+              Save changes when you're done. Weightage adjusts your sheet total.
+            </DialogDescription>
           </DialogHeader>
           {editing && (
             <GoalForm
@@ -232,6 +243,63 @@ export function GoalList({
               submitLabel="Save changes"
             />
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* -------------------- Delete goal confirm dialog ------------------- */}
+      <Dialog
+        open={!!deleting}
+        onOpenChange={(o) => {
+          if (!o && !deletePending) setDeleting(null);
+        }}
+      >
+        <DialogContent
+          showCloseButton={false}
+          className="overflow-hidden rounded-md border border-border/60 bg-card p-5 text-foreground shadow-2xl shadow-black/40 sm:max-w-md"
+        >
+          <DialogHeader className="text-center sm:text-center">
+            <DialogTitle className="text-xl font-semibold tracking-tight leading-tight">
+              Delete this goal?
+            </DialogTitle>
+            <DialogDescription className="text-sm text-muted-foreground">
+              The goal will be removed from your sheet and its weightage freed
+              up. Past audit-log entries are preserved.
+            </DialogDescription>
+          </DialogHeader>
+
+          {deleting && (
+            <div className="mt-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm">
+              <div className="text-[0.6rem] uppercase tracking-wider text-destructive">
+                Will remove
+              </div>
+              <div className="mt-0.5 font-medium text-foreground">
+                {deleting.title}
+              </div>
+              <div className="mt-0.5 text-xs text-muted-foreground">
+                {deleting.thrust_area} · {deleting.uom} · {deleting.weightage}%
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="mt-2 gap-2 sm:gap-2 sm:justify-center">
+            <Button
+              variant="ghost"
+              className="rounded-sm"
+              onClick={() => setDeleting(null)}
+              disabled={deletePending}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              className="rounded-sm"
+              onClick={handleConfirmDelete}
+              disabled={deletePending}
+            >
+              {deletePending && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+              {deletePending ? "Deleting…" : "Yes, delete goal"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </>
