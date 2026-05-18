@@ -4,7 +4,6 @@ import { Toaster } from "@/components/ui/toaster";
 import { ProtectedRoute } from "@/components/layout/ProtectedRoute";
 import { AppShell } from "@/components/layout/AppShell";
 import { SplashScreen } from "@/components/layout/SplashScreen";
-import { ThemeProvider } from "@/lib/theme-provider";
 import { useAuthStore } from "@/stores/authStore";
 import LoginPage from "@/pages/auth/LoginPage";
 import AuthCallbackPage from "@/pages/auth/AuthCallbackPage";
@@ -44,17 +43,12 @@ export default function App() {
   }, [init]);
 
   if (!initialized) {
-    return (
-      <ThemeProvider>
-        <SplashScreen />
-      </ThemeProvider>
-    );
+    return <SplashScreen />;
   }
 
   return (
-    <ThemeProvider>
-      <BrowserRouter>
-        <Routes>
+    <BrowserRouter>
+      <Routes>
         <Route path="/" element={<RootRedirect />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/auth/callback" element={<AuthCallbackPage />} />
@@ -90,10 +84,9 @@ export default function App() {
           </Route>
         </Route>
 
-          <Route path="*" element={<NotFoundPage />} />
-        </Routes>
-        <Toaster />
-      </BrowserRouter>
-    </ThemeProvider>
+        <Route path="*" element={<NotFoundPage />} />
+      </Routes>
+      <Toaster />
+    </BrowserRouter>
   );
 }

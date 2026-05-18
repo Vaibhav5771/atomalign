@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { createClient, type Session } from "@supabase/supabase-js";
-import { supabase } from "@/lib/supabase";
+import { supabase, timeoutFetch } from "@/lib/supabase";
 import { syncProfileFromGraph } from "@/lib/graph";
 import type { Profile, UserRole } from "@/types";
 
@@ -220,6 +220,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       return { error: "Only admins can create users" };
     }
 
+    try {
     const url = import.meta.env.VITE_SUPABASE_URL as string;
     const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
     const ephemeral = createClient(url, key, {
@@ -229,6 +230,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         detectSessionInUrl: false,
         storageKey: `sb-admin-create-${Date.now()}`,
       },
+      global: { fetch: timeoutFetch },
     });
 
     const { data: signUpData, error: signUpErr } = await ephemeral.auth.signUp({
@@ -299,6 +301,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
 
     return { error: null, userId: newUserId };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      const isTimeout = msg.includes("aborted") || msg.toLowerCase().includes("abort");
+      return {
+        error: isTimeout
+          ? "Request timed out after 15s. Supabase may be cold-starting — wait 30s and try again."
+          : `Could not create user: ${msg}`,
+      };
+    }
   },
 
   // Admin patches a profile: full_name / role / manager_id / department.

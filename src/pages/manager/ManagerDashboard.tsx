@@ -3,7 +3,7 @@ import { useFocusRefresh } from "@/lib/use-focus-refresh";
 import { useAuthStore } from "@/stores/authStore";
 import { useManagerStore } from "@/stores/managerStore";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { MagicCard } from "@/components/ui/magicui/magic-card";
+import { StatCard } from "@/components/shared/StatCard";
 import { NumberTicker } from "@/components/ui/magicui/number-ticker";
 import { TeamTable } from "@/components/manager/TeamTable";
 
@@ -57,11 +57,11 @@ export default function ManagerDashboard() {
 
 function Stat({ label, value }: { label: string; value: number }) {
   return (
-    <MagicCard className="p-3">
+    <StatCard className="p-3">
       <div className="text-xs text-muted-foreground uppercase tracking-wide">{label}</div>
       <div className="text-2xl font-semibold mt-1 font-mono">
         <NumberTicker value={value} />
       </div>
-    </MagicCard>
+    </StatCard>
   );
 }

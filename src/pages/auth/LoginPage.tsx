@@ -3,7 +3,7 @@ import { Navigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Loader2 } from "lucide-react";
+import { Loader2, Target, LineChart, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,10 +15,14 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Meteors } from "@/components/ui/magicui/meteors";
-import { BorderBeam } from "@/components/ui/magicui/border-beam";
+import { ShimmerButton } from "@/components/ui/magicui/shimmer-button";
 import { WordFadeIn } from "@/components/ui/magicui/word-fade-in";
+import { Globe } from "@/components/ui/magicui/globe";
+import { BlurFade } from "@/components/ui/magicui/blur-fade";
+import { DotPattern } from "@/components/ui/magicui/dot-pattern";
 import { useToast } from "@/hooks/use-toast";
 import { useAuthStore } from "@/stores/authStore";
+import logoUrl from "@/assets/logo.svg";
 import type { UserRole } from "@/types";
 
 const schema = z.object({
@@ -78,20 +82,102 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center bg-background px-4 overflow-hidden">
-      <Meteors number={20} />
-      <Card className="relative w-full max-w-sm">
+    <div className="relative min-h-screen w-full bg-background lg:grid lg:grid-cols-[3fr_2fr]">
+      <aside className="relative hidden overflow-hidden border-r border-border bg-card/40 lg:flex lg:flex-col lg:p-10">
+        <Meteors number={18} />
+
+        <Globe className="pointer-events-none absolute -right-40 -bottom-40 w-[640px] opacity-60" />
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background:
+              "radial-gradient(circle at 20% 0%, color-mix(in oklch, var(--neon-violet) 12%, transparent), transparent 55%)",
+          }}
+        />
+
+        <div className="relative z-10 flex items-center gap-4">
+          <img src={logoUrl} alt="" aria-hidden="true" className="h-20 w-20" />
+          <span className="text-4xl font-semibold tracking-tight">AtomAlign</span>
+        </div>
+
+        <div className="relative z-10 mt-10 flex flex-col gap-8 pb-8">
+          <BlurFade>
+            <div className="inline-flex items-center gap-2 rounded-full border border-border bg-background/60 px-3 py-1 text-xs text-muted-foreground backdrop-blur">
+              <span className="font-mono text-foreground/70">{"{ }"}</span>
+              Goal alignment workspace
+            </div>
+          </BlurFade>
+
+          <BlurFade delay={0.1}>
+            <h1 className="text-4xl font-semibold leading-tight tracking-tight">
+              Align goals at the
+              <br /> speed of execution.
+            </h1>
+          </BlurFade>
+
+          <BlurFade delay={0.2}>
+            <p className="max-w-md text-sm text-muted-foreground">
+              Set goals, cascade them across your org, and track progress in real
+              time — without losing sight of the people behind the numbers.
+            </p>
+          </BlurFade>
+
+          <BlurFade delay={0.3}>
+            <ul className="grid gap-5 pt-12">
+              <Feature
+                icon={<Target className="h-4 w-4" />}
+                title="Goal Cascading"
+                description="Connect company objectives to team and individual goals in a single graph."
+              />
+              <Feature
+                icon={<LineChart className="h-4 w-4" />}
+                title="Real-time Tracking"
+                description="See progress, blockers, and check-ins as they happen — not at quarter-end."
+              />
+              <Feature
+                icon={<Users className="h-4 w-4" />}
+                title="Manager Insights"
+                description="Spot trends across teams and surface escalations before they slip."
+              />
+            </ul>
+          </BlurFade>
+        </div>
+
+      </aside>
+
+      <main className="relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-10 lg:min-h-0">
+        <DotPattern
+          width={22}
+          height={22}
+          radius={1}
+          className="text-foreground/[0.07] [mask-image:radial-gradient(ellipse_at_center,white,transparent_70%)]"
+        />
+        <div className="absolute inset-0 lg:hidden">
+          <Meteors number={20} />
+        </div>
+        <Card className="relative rounded-md w-full max-w-sm border-border/60 shadow-2xl shadow-black/40 backdrop-blur">
         <CardHeader>
-          <CardTitle className="text-2xl">
-            <WordFadeIn text="AtomAlign" />
-          </CardTitle>
-          <CardDescription>Goal Setting & Tracking</CardDescription>
+          <div className="flex items-center gap-3">
+            <img src={logoUrl} alt="" aria-hidden="true" className="h-12 w-12 shrink-0" />
+            <div className="flex flex-col">
+              <CardTitle className="text-2xl leading-tight">
+                <WordFadeIn text="AtomAlign" />
+              </CardTitle>
+              <CardDescription>Goal Setting & Tracking</CardDescription>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <form onSubmit={onSubmit} className="space-y-3" noValidate>
             <div className="space-y-1">
               <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" autoComplete="email" {...register("email")} />
+              <Input
+                id="email"
+                type="email"
+                autoComplete="email"
+                {...register("email")}
+              />
               {errors.email && (
                 <p className="text-xs text-destructive">{errors.email.message}</p>
               )}
@@ -108,15 +194,14 @@ export default function LoginPage() {
                 <p className="text-xs text-destructive">{errors.password.message}</p>
               )}
             </div>
-            <Button
+            <ShimmerButton
               type="submit"
-              className="w-full relative overflow-hidden"
+              className="w-full"
               disabled={submitting || msSubmitting}
             >
               {submitting && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
               {submitting ? "Signing in…" : "Sign in"}
-              <BorderBeam />
-            </Button>
+            </ShimmerButton>
           </form>
 
           <div className="relative my-4">
@@ -153,7 +238,30 @@ export default function LoginPage() {
             {msSubmitting ? "Redirecting…" : "Sign in with Microsoft"}
           </Button>
         </CardContent>
-      </Card>
+        </Card>
+      </main>
     </div>
+  );
+}
+
+function Feature({
+  icon,
+  title,
+  description,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+}) {
+  return (
+    <li className="flex gap-3">
+      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-l border border-border bg-background/60 text-foreground/80">
+        {icon}
+      </span>
+      <div className="space-y-0.5">
+        <p className="text-sm font-medium text-foreground">{title}</p>
+        <p className="text-xs leading-relaxed text-muted-foreground">{description}</p>
+      </div>
+    </li>
   );
 }

@@ -1,15 +1,16 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { UserPlus2 } from "lucide-react";
+import { UserPlus2, Network } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useFocusRefresh } from "@/lib/use-focus-refresh";
 import { useAuthStore } from "@/stores/authStore";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { MagicCard } from "@/components/ui/magicui/magic-card";
 import { NumberTicker } from "@/components/ui/magicui/number-ticker";
 import { BentoGrid } from "@/components/ui/magicui/bento-grid";
 import { CreateTeamWizard } from "@/components/admin/CreateTeamWizard";
+import { ViewTeamDialog } from "@/components/admin/ViewTeamDialog";
+import { StatCard } from "@/components/shared/StatCard";
 import type { SheetStatus } from "@/types";
 
 interface AdminStats {
@@ -33,6 +34,8 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState<AdminStats>(EMPTY);
   const [loading, setLoading] = useState(true);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [viewTeamOpen, setViewTeamOpen] = useState(false);
+  const teamExists = stats.managers + stats.employees > 0;
 
   const loadStats = async () => {
     setLoading(true);
@@ -91,13 +94,31 @@ export default function AdminDashboard() {
         <div>
           <h1 className="text-2xl font-semibold">Admin overview</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Org-wide snapshot of the current goal cycle.
+            Organization's snapshot of the current goal cycle.
           </p>
         </div>
-        <Button type="button" onClick={() => setWizardOpen(true)}>
-          <UserPlus2 className="h-4 w-4 mr-1" />
-          Create Team
-        </Button>
+        <div className="flex items-center gap-2">
+          {teamExists ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setViewTeamOpen(true)}
+              className="rounded-sm"
+            >
+              <Network className="h-4 w-4 mr-1" />
+              View Team
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              onClick={() => setWizardOpen(true)}
+              className="rounded-sm"
+            >
+              <UserPlus2 className="h-4 w-4 mr-1" />
+              Create Team
+            </Button>
+          )}
+        </div>
       </div>
 
       <BentoGrid>
@@ -105,7 +126,7 @@ export default function AdminDashboard() {
         <StatTile label="Managers" value={stats.managers} loading={loading} />
         <StatTile label="Total sheets" value={stats.sheets} loading={loading} />
 
-        <MagicCard className="md:col-span-2 p-4">
+        <StatCard className="md:col-span-2 p-4">
           <div className="text-sm font-medium mb-3">Sheet status breakdown</div>
           <div className="grid grid-cols-4 gap-3">
             <MiniStat label="Draft" value={stats.byStatus.DRAFT} loading={loading} />
@@ -113,9 +134,9 @@ export default function AdminDashboard() {
             <MiniStat label="Approved" value={stats.byStatus.APPROVED} loading={loading} />
             <MiniStat label="Returned" value={stats.byStatus.RETURNED} loading={loading} />
           </div>
-        </MagicCard>
+        </StatCard>
 
-        <MagicCard className="p-4">
+        <StatCard className="p-4">
           <div className="text-sm font-medium mb-2">Approval rate</div>
           {loading ? (
             <div className="text-3xl font-semibold font-mono">—</div>
@@ -127,9 +148,9 @@ export default function AdminDashboard() {
           <div className="text-xs text-muted-foreground mt-1">
             of all sheets approved this cycle
           </div>
-        </MagicCard>
+        </StatCard>
 
-        <MagicCard className="md:col-span-3 p-4">
+        <StatCard className="md:col-span-3 p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
               <div className="text-sm font-medium">Shared goals</div>
@@ -137,11 +158,11 @@ export default function AdminDashboard() {
                 Push organisation-wide goals to selected employees.
               </p>
             </div>
-            <Button asChild>
+            <Button asChild className="rounded-sm">
               <Link to="/admin/shared-goals">Push a shared goal</Link>
             </Button>
           </div>
-        </MagicCard>
+        </StatCard>
       </BentoGrid>
 
       <Dialog
@@ -150,7 +171,7 @@ export default function AdminDashboard() {
           if (!open) onWizardClose();
         }}
       >
-        <DialogContent className="sm:max-w-3xl">
+        <DialogContent className="sm:max-w-3xl rounded-md border border-border/60 bg-card shadow-2xl shadow-black/40 ring-0">
           <CreateTeamWizard
             showProfileStep
             onClose={onWizardClose}
@@ -160,18 +181,20 @@ export default function AdminDashboard() {
           />
         </DialogContent>
       </Dialog>
+
+      <ViewTeamDialog open={viewTeamOpen} onOpenChange={setViewTeamOpen} />
     </div>
   );
 }
 
 function StatTile({ label, value, loading }: { label: string; value: number; loading: boolean }) {
   return (
-    <MagicCard className="p-4">
+    <StatCard className="p-4">
       <div className="text-xs text-muted-foreground uppercase tracking-wide">{label}</div>
       <div className="text-3xl font-semibold mt-1 font-mono">
         {loading ? "—" : <NumberTicker value={value} />}
       </div>
-    </MagicCard>
+    </StatCard>
   );
 }
 

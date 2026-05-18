@@ -176,7 +176,7 @@ function JsonBlock({ value }: { value: unknown }) {
     );
   }
   return (
-    <div className="rounded border border-border bg-muted/30 px-3 py-2 overflow-x-auto">
+    <div className="rounded border border-border bg-muted/30 px-3 py-2 overflow-x-auto scrollbar-hide">
       <StructuredValue value={value} />
     </div>
   );
@@ -195,7 +195,7 @@ export function AuditTable({ rows, loading }: Props) {
   };
 
   return (
-    <div className="rounded-lg border border-border bg-card overflow-hidden">
+    <div className="rounded-md border border-border/60 bg-card overflow-hidden">
       <Table>
         <TableHeader>
           <TableRow>

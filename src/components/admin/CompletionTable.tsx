@@ -116,7 +116,7 @@ export function CompletionTable({ rows, loading }: Props) {
         </div>
       </div>
 
-      <div className="rounded-lg border border-border bg-card overflow-hidden">
+      <div className="rounded-md border border-border/60 bg-card overflow-hidden">
         <Table>
           <TableHeader>
             <TableRow>

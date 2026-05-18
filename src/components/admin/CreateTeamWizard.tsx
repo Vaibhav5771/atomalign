@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import {
   Loader2,
   Plus,
@@ -6,8 +6,12 @@ import {
   Copy,
   CheckCircle2,
   ArrowLeft,
+  Check,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
+import { supabase } from "@/lib/supabase";
 import { notify } from "@/lib/notify";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -19,6 +23,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { BlurFade } from "@/components/ui/magicui/blur-fade";
+import { TeamTree } from "@/components/admin/TeamTree";
+import { cn } from "@/lib/utils";
+import { usePrefersReducedMotion } from "@/lib/use-prefers-reduced-motion";
 import {
   Select,
   SelectContent,
@@ -99,7 +107,7 @@ export function CreateTeamWizard({
   const { toast } = useToast();
   const me = useAuthStore((s) => s.user);
   const adminCreateUser = useAuthStore((s) => s.adminCreateUser);
-  const updateMyAccount = useAuthStore((s) => s.updateMyAccount);
+  const signIn = useAuthStore((s) => s.signIn);
   const fetchWorkspaceManagers = useAuthStore((s) => s.fetchWorkspaceManagers);
   const fetchWorkspaceEmployees = useAuthStore((s) => s.fetchWorkspaceEmployees);
 
@@ -107,12 +115,34 @@ export function CreateTeamWizard({
     showProfileStep ? "profile" : "managers",
   );
 
-  // -- Step 0: profile state
-  const [profileName, setProfileName] = useState(me?.full_name ?? "");
-  const [profileEmail, setProfileEmail] = useState(me?.email ?? "");
+  // -- Step 0: profile state — creates a NEW admin account instead of
+  // mutating the current one. This preserves admin@demo.com / Demo@1234
+  // as a permanent last-resort login.
+  const [profileName, setProfileName] = useState("");
+  const [profileEmail, setProfileEmail] = useState("");
   const [profilePassword, setProfilePassword] = useState("");
   const [profileError, setProfileError] = useState<string | null>(null);
   const [profileSaving, setProfileSaving] = useState(false);
+  const [profileSlowHint, setProfileSlowHint] = useState(false);
+
+  // Pre-warm Supabase as soon as Step 0 mounts. The free-tier instance pauses
+  // after inactivity; firing a cheap query here means the actual signUp click
+  // hits a hot connection instead of waiting ~15s for cold-start.
+  useEffect(() => {
+    if (step !== "profile") return;
+    void supabase.from("profiles").select("id").limit(1);
+  }, [step]);
+
+  // While profileSaving is true, after 3s show a "first request can take up
+  // to 15s" hint so a slow cold-start reads as intentional, not broken.
+  useEffect(() => {
+    if (!profileSaving) {
+      setProfileSlowHint(false);
+      return;
+    }
+    const t = setTimeout(() => setProfileSlowHint(true), 3000);
+    return () => clearTimeout(t);
+  }, [profileSaving]);
 
   // -- Step 1: managers state
   const [managers, setManagers] = useState<ManagerRow[]>([blankManager()]);
@@ -220,14 +250,6 @@ export function CreateTeamWizard({
           const empList = await fetchWorkspaceEmployees();
           setAllEmployees(empList);
         }
-
-        const defaultMgr = list[0]?.id ?? "";
-        setEmployees((rows) =>
-          rows.map((r) => ({
-            ...r,
-            manager_id: r.manager_id || defaultMgr,
-          })),
-        );
       } catch (err: any) {
         setManagersError(err.message || String(err));
       } finally {
@@ -237,7 +259,9 @@ export function CreateTeamWizard({
   }, [step, fetchWorkspaceManagers, fetchWorkspaceEmployees]);
 
   // -------------------------------------------------------------------------
-  // Step 0 handlers
+  // Step 0 handlers — create a NEW admin account and swap sessions.
+  // The seed admin (admin@demo.com / Demo@1234) remains untouched so it can
+  // always be used as a fallback / recovery login.
   // -------------------------------------------------------------------------
   const onSaveProfile = async () => {
     setProfileError(null);
@@ -249,23 +273,98 @@ export function CreateTeamWizard({
       setProfileError("Enter a valid email");
       return;
     }
-    if (profilePassword && profilePassword.length < 6) {
-      setProfileError("Password must be at least 6 characters");
+    if (profileEmail.trim().toLowerCase() === "admin@demo.com") {
+      setProfileError(
+        "Choose a different email — admin@demo.com is reserved as the fallback admin.",
+      );
       return;
     }
+    if (!profilePassword || profilePassword.length < 6) {
+      setProfileError("Password is required (min 6 characters)");
+      return;
+    }
+
     setProfileSaving(true);
-    const { error } = await updateMyAccount({
-      full_name: profileName.trim(),
-      email: profileEmail.trim() !== me?.email ? profileEmail.trim() : undefined,
-      password: profilePassword || undefined,
-    });
-    setProfileSaving(false);
-    if (error) {
-      setProfileError(error);
-      return;
+
+    try {
+      // 1. Create the new admin user via the existing isolated-client flow.
+      const { error: createErr, userId } = await adminCreateUser({
+        email: profileEmail.trim(),
+        password: profilePassword,
+        full_name: profileName.trim(),
+        role: "ADMIN",
+      });
+
+      // Recovery path: if a previous attempt half-succeeded (auth row created
+      // before the flow stalled), the retry will hit "User already registered".
+      // Try signing in with the supplied credentials — if the password matches
+      // the prior attempt, Step 0 becomes idempotent and we proceed normally.
+      const alreadyExists =
+        !!createErr && /already (registered|exists|been registered)/i.test(createErr);
+
+      let resolvedUserId = userId;
+
+      if (createErr && !alreadyExists) {
+        setProfileError(createErr);
+        return;
+      }
+
+      // 2. Swap the current session from the seed admin to the new one.
+      //    supabase.auth.signInWithPassword replaces the existing session in
+      //    place — no explicit signOut needed, AppShell stays mounted.
+      const { error: signInErr } = await signIn(
+        profileEmail.trim(),
+        profilePassword,
+      );
+
+      if (signInErr) {
+        if (alreadyExists) {
+          setProfileError(
+            `An admin with ${profileEmail.trim()} already exists, but the password didn't match. ` +
+              `Either re-enter the password you set the first time, or pick a different email.`,
+          );
+        } else {
+          setProfileError(
+            `New admin created, but auto sign-in failed: ${signInErr}. ` +
+              `Sign out and sign in manually with ${profileEmail.trim()}.`,
+          );
+        }
+        return;
+      }
+
+      // If we took the recovery path, pull the id from the now-active session.
+      if (!resolvedUserId) {
+        resolvedUserId = useAuthStore.getState().user?.id;
+      }
+
+      // 3. Mark onboarding-seen for the new admin so a mid-wizard reload
+      //    doesn't re-open the dialog for them.
+      if (resolvedUserId) {
+        try {
+          window.localStorage.setItem(
+            "atomalign:onboarding-seen:" + resolvedUserId,
+            "1",
+          );
+        } catch {
+          /* localStorage quota / SSR — non-fatal */
+        }
+      }
+
+      toast({
+        title: alreadyExists
+          ? "Signed in as existing admin"
+          : "New admin account created",
+        description:
+          `Signed in as ${profileEmail.trim()}. ` +
+          `admin@demo.com remains available as fallback.`,
+      });
+      setStep("managers");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setProfileError(`Unexpected error: ${msg}. Try again in a few seconds.`);
+    } finally {
+      setProfileSaving(false);
     }
-    toast({ title: "Admin profile updated" });
-    setStep("managers");
   };
 
   // -------------------------------------------------------------------------
@@ -528,59 +627,67 @@ export function CreateTeamWizard({
     onClose();
   };
 
-  const onAnotherTeam = () => {
-    setManagers([blankManager()]);
-    setEmployees([blankEmployee()]);
-    setManagerProgress(null);
-    setEmployeeProgress(null);
-    setStep("managers");
-    // Keep `created` so the summary stays cumulative if user toggles back
-  };
-
   // -------------------------------------------------------------------------
   // Step renderers
   // -------------------------------------------------------------------------
 
-  const stepIndex = useMemo(() => {
-    const order: Step[] = showProfileStep
-      ? ["profile", "managers", "employees", "summary"]
-      : ["managers", "employees", "summary"];
-    return order.indexOf(step) + 1;
-  }, [step, showProfileStep]);
+  const stepOrder = useMemo<{ id: Step; label: string }[]>(
+    () =>
+      showProfileStep
+        ? [
+            { id: "profile", label: "Admin" },
+            { id: "managers", label: "Managers" },
+            { id: "employees", label: "Employees" },
+            { id: "summary", label: "Summary" },
+          ]
+        : [
+            { id: "managers", label: "Managers" },
+            { id: "employees", label: "Employees" },
+            { id: "summary", label: "Summary" },
+          ],
+    [showProfileStep],
+  );
 
-  const stepTotal = showProfileStep ? 4 : 3;
+  const currentStepIndex = stepOrder.findIndex((s) => s.id === step);
+
+  // Chevron navigation is free-scroll across all four steps. The only time
+  // it's disabled is mid-operation (creating an admin, batch-creating
+  // managers/employees) to avoid stepping away from in-flight work.
+  const navBusy = profileSaving || managersWorking || employeesWorking;
+  const canPrev = currentStepIndex > 0 && !navBusy;
+  const canNext = currentStepIndex < stepOrder.length - 1 && !navBusy;
+
+  const goPrev = () => {
+    if (!canPrev) return;
+    setStep(stepOrder[currentStepIndex - 1].id);
+  };
+  const goNext = () => {
+    if (!canNext) return;
+    setStep(stepOrder[currentStepIndex + 1].id);
+  };
 
   return (
     <>
       <DialogHeader>
-        <DialogTitle>
-          {step === "profile" && "Set up your admin account"}
+        <DialogTitle className="text-2xl font-semibold tracking-tight leading-tight">
+          {step === "profile" && "Create your admin account"}
           {step === "managers" && "Add managers"}
           {step === "employees" && "Add employees"}
           {step === "summary" && "Team created"}
         </DialogTitle>
-        <DialogDescription>
-          {step !== "summary" ? (
-            <span>
-              Step {stepIndex} of {stepTotal}
-              {" — "}
-              {step === "profile" &&
-                "So you also receive goal-event notifications."}
-              {step === "managers" &&
-                "Use real emails — your team will receive notifications for goal submissions, approvals, and check-ins."}
-              {step === "employees" &&
-                "Each employee reports to one of the managers above (or any existing manager)."}
-            </span>
-          ) : (
-            <span>
-              Welcome emails are on their way. Use these credentials to sign in
-              as any of the new users.
-            </span>
-          )}
+        <DialogDescription className="text-sm/relaxed">
+          {step === "profile" &&
+            "Create a personal admin account. admin@demo.com stays as a permanent fallback login."}
+          {step === "managers" &&
+            "Use real emails — your team will receive notifications for goal submissions, approvals, and check-ins."}
+          {step === "employees" &&
+            "Each employee reports to one of the managers above (or any existing manager)."}
+          {step === "summary" &&
+            "Welcome emails are on their way. Use these credentials to sign in as any of the new users."}
         </DialogDescription>
       </DialogHeader>
 
-      <div className="space-y-4 py-2 max-h-[60vh] overflow-y-auto pr-1">
+      <div className="space-y-4 py-2 max-h-[60vh] overflow-y-auto pr-1 scrollbar-hide">
         {step === "profile" && (
           <div className="space-y-3">
             <div className="space-y-1">
@@ -600,31 +707,45 @@ export function CreateTeamWizard({
                 value={profileEmail}
                 onChange={(e) => setProfileEmail(e.target.value)}
                 disabled={profileSaving}
+                autoComplete="email"
               />
               <p className="text-xs text-muted-foreground">
-                Email change is immediate (Confirm-email is disabled on the demo
-                project).
+                A brand-new admin user is created with this email — your demo
+                admin row is not touched.
               </p>
             </div>
             <div className="space-y-1">
-              <Label htmlFor="adm_password">New password (optional)</Label>
+              <Label htmlFor="adm_password">Password *</Label>
               <Input
                 id="adm_password"
                 type="text"
                 value={profilePassword}
                 onChange={(e) => setProfilePassword(e.target.value)}
-                placeholder="Leave blank to keep current password"
+                placeholder="Min 6 characters"
                 disabled={profileSaving}
                 autoComplete="new-password"
               />
               <p className="text-xs text-muted-foreground">
-                Your existing session stays signed in. New password applies on
-                next sign-in.
+                After creation you'll be signed in as the new admin
+                automatically.
               </p>
             </div>
             {profileError && (
               <p className="text-sm text-destructive">{profileError}</p>
             )}
+            {profileSlowHint && profileSaving && (
+              <p className="text-xs text-muted-foreground">
+                Still working — first request can take up to 15 seconds while
+                the demo Supabase instance wakes up. Hang tight.
+              </p>
+            )}
+            <div className="rounded-md border border-primary/40 bg-primary/[0.12] px-3 py-2.5 text-xs text-foreground/90">
+              <span className="font-medium text-primary">Fallback admin reminder:</span>{" "}
+              <code className="rounded-sm bg-primary/20 px-1.5 py-0.5 font-mono text-foreground">admin@demo.com</code>{" "}
+              /{" "}
+              <code className="rounded-sm bg-primary/20 px-1.5 py-0.5 font-mono text-foreground">Demo@1234</code>{" "}
+              stays active no matter what you enter above, so you always have a recovery login.
+            </div>
           </div>
         )}
 
@@ -730,6 +851,7 @@ export function CreateTeamWizard({
                 setManagers((rows) => [...rows, blankManager()])
               }
               disabled={managers.length >= MAX_MANAGERS || managersWorking}
+              className="rounded-sm"
             >
               <Plus className="h-4 w-4 mr-1" />
               Add manager
@@ -907,14 +1029,12 @@ export function CreateTeamWizard({
                   type="button"
                   variant="outline"
                   onClick={() =>
-                    setEmployees((rows) => [
-                      ...rows,
-                      blankEmployee(allManagers[0]?.id ?? ""),
-                    ])
+                    setEmployees((rows) => [...rows, blankEmployee()])
                   }
                   disabled={
                     employees.length >= MAX_EMPLOYEES || employeesWorking
                   }
+                  className="rounded-sm"
                 >
                   <Plus className="h-4 w-4 mr-1" />
                   Add employee
@@ -931,68 +1051,38 @@ export function CreateTeamWizard({
         {step === "summary" && (
           <div className="space-y-4">
             {created.length > 0 && (
-              <div className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 py-3 px-4 rounded-md border border-emerald-200 dark:bg-emerald-500/10 dark:border-emerald-500/20 dark:text-emerald-400">
+              <div className="flex items-center gap-2 rounded-md border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-400">
                 <CheckCircle2 className="h-5 w-5" />
-                Successfully created {created.length} {created.length === 1 ? "user" : "users"}.
+                Successfully created {created.length}{" "}
+                {created.length === 1 ? "user" : "users"}.
               </div>
             )}
-            
-            <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
-              <h3 className="font-semibold text-lg text-foreground px-1">Complete Team Hierarchy</h3>
-              {summaryTree.map((node, i) => (
-                <div key={i} className="border border-border rounded-md overflow-hidden bg-muted/20">
-                  <div className="bg-muted/50 p-3 flex flex-col sm:flex-row sm:items-center justify-between border-b border-border gap-2">
-                    <div>
-                      <div className="font-semibold text-sm flex items-center gap-2">
-                        {node.mgrName}
-                        {node.isNew ? (
-                          <Badge variant="secondary" className="text-[10px] h-4 py-0 leading-none">New</Badge>
-                        ) : null}
-                      </div>
-                      <div className="text-xs font-mono text-muted-foreground mt-0.5">{node.mgrEmail}</div>
-                    </div>
-                    {node.isNew && node.mgrPassword && (
-                      <div className="text-xs font-mono font-medium bg-background border border-border px-2 py-1 rounded w-max">
-                        <span className="text-muted-foreground mr-1">Password:</span>
-                        {node.mgrPassword}
-                      </div>
-                    )}
-                  </div>
-                  
-                  {node.employees.length > 0 ? (
-                    <div className="p-3 space-y-2">
-                      <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Direct Reports ({node.employees.length})</div>
-                      <div className="grid gap-2">
-                        {node.employees.map(e => (
-                          <div key={e.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-2.5 rounded-md border border-border bg-background shadow-sm">
-                            <div>
-                              <div className="text-sm font-medium flex items-center gap-2">
-                                {e.full_name}
-                                {e.isNew && <Badge variant="secondary" className="text-[10px] h-4 py-0 leading-none">New</Badge>}
-                              </div>
-                              <div className="text-xs font-mono text-muted-foreground mt-0.5">{e.email}</div>
-                            </div>
-                            {e.isNew && e.password && (
-                              <div className="mt-2 sm:mt-0 text-xs font-mono bg-muted border border-border px-2 py-1 rounded text-foreground">
-                                <span className="text-muted-foreground mr-1">pw:</span>
-                                {e.password}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="p-3 text-xs flex text-muted-foreground italic">
-                      No direct reports assigned.
-                    </div>
-                  )}
-                </div>
-              ))}
+
+            <div className="space-y-6 max-h-[60vh] overflow-auto pr-2 scrollbar-hide">
+              <h3 className="font-semibold text-lg text-foreground px-1">
+                Complete Team Hierarchy
+              </h3>
+              <TeamTree
+                admin={{
+                  name: me?.full_name || me?.email || "Admin",
+                  email: me?.email || "",
+                  role: me?.role || "ADMIN",
+                }}
+                tree={summaryTree}
+              />
             </div>
           </div>
         )}
       </div>
+
+      <WizardStepper
+        steps={stepOrder}
+        currentIndex={currentStepIndex}
+        canPrev={canPrev}
+        canNext={canNext}
+        onPrev={goPrev}
+        onNext={goNext}
+      />
 
       <DialogFooter className="gap-2 sm:gap-2">
         {step === "profile" && (
@@ -1002,14 +1092,20 @@ export function CreateTeamWizard({
               variant="outline"
               onClick={() => setStep("managers")}
               disabled={profileSaving}
+              className="rounded-sm"
             >
-              Skip — keep current account
+              Skip — stay as demo admin
             </Button>
-            <Button type="button" onClick={onSaveProfile} disabled={profileSaving}>
+            <Button
+              type="button"
+              onClick={onSaveProfile}
+              disabled={profileSaving}
+              className="rounded-sm"
+            >
               {profileSaving && (
                 <Loader2 className="h-4 w-4 mr-1 animate-spin" />
               )}
-              Save &amp; continue
+              Create admin &amp; continue
             </Button>
           </>
         )}
@@ -1021,6 +1117,7 @@ export function CreateTeamWizard({
               variant="outline"
               onClick={() => setStep("employees")}
               disabled={managersWorking}
+              className="rounded-sm"
             >
               Skip — I already have managers
             </Button>
@@ -1028,6 +1125,7 @@ export function CreateTeamWizard({
               type="button"
               onClick={onCreateManagers}
               disabled={managersWorking}
+              className="rounded-sm"
             >
               {managersWorking && (
                 <Loader2 className="h-4 w-4 mr-1 animate-spin" />
@@ -1046,6 +1144,7 @@ export function CreateTeamWizard({
               variant="ghost"
               onClick={() => setStep("managers")}
               disabled={employeesWorking}
+              className="rounded-sm"
             >
               <ArrowLeft className="h-4 w-4 mr-1" />
               Back
@@ -1054,6 +1153,7 @@ export function CreateTeamWizard({
               type="button"
               onClick={onCreateEmployees}
               disabled={employeesWorking || allManagers.length === 0}
+              className="rounded-sm"
             >
               {employeesWorking && (
                 <Loader2 className="h-4 w-4 mr-1 animate-spin" />
@@ -1067,14 +1167,16 @@ export function CreateTeamWizard({
 
         {step === "summary" && (
           <>
-            <Button type="button" variant="outline" onClick={onCopyAll}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onCopyAll}
+              className="rounded-sm"
+            >
               <Copy className="h-4 w-4 mr-1" />
               Copy all credentials
             </Button>
-            <Button type="button" variant="outline" onClick={onAnotherTeam}>
-              Create another team
-            </Button>
-            <Button type="button" onClick={onDone}>
+            <Button type="button" onClick={onDone} className="rounded-sm">
               Done
             </Button>
           </>
@@ -1083,3 +1185,124 @@ export function CreateTeamWizard({
     </>
   );
 }
+
+interface WizardStepperProps {
+  steps: { id: Step; label: string }[];
+  currentIndex: number;
+  canPrev: boolean;
+  canNext: boolean;
+  onPrev: () => void;
+  onNext: () => void;
+}
+
+function WizardStepper({
+  steps,
+  currentIndex,
+  canPrev,
+  canNext,
+  onPrev,
+  onNext,
+}: WizardStepperProps) {
+  const reducedMotion = usePrefersReducedMotion();
+
+  return (
+    <BlurFade delay={0.05} className="w-full">
+      {!reducedMotion && <style>{stepperKeyframes}</style>}
+      <div className="flex w-full items-center justify-center gap-2 sm:gap-3">
+        <button
+          type="button"
+          onClick={onPrev}
+          disabled={!canPrev}
+          aria-label="Previous step"
+          className="-mt-5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border/60 bg-card text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+        <div
+          role="list"
+          aria-label="Wizard progress"
+          className="flex items-center justify-center gap-2 sm:gap-3"
+      >
+        {steps.map((s, i) => {
+          const isCompleted = i < currentIndex;
+          const isActive = i === currentIndex;
+          return (
+            <Fragment key={s.id}>
+              {i > 0 && (
+                <div
+                  aria-hidden="true"
+                  className="-mt-5 h-0.5 w-8 overflow-hidden rounded-full bg-border/40 sm:w-12"
+                >
+                  <div
+                    className="h-full bg-primary transition-[width] duration-500 ease-out"
+                    style={{ width: i <= currentIndex ? "100%" : "0%" }}
+                  />
+                </div>
+              )}
+              <div
+                role="listitem"
+                className="flex flex-col items-center gap-1.5"
+              >
+                <div
+                  className={cn(
+                    "relative flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold transition-colors duration-300",
+                    isCompleted && "bg-primary text-primary-foreground",
+                    isActive &&
+                      "bg-primary text-primary-foreground ring-4 ring-primary/15",
+                    !isCompleted &&
+                      !isActive &&
+                      "border border-border/60 bg-card text-muted-foreground",
+                  )}
+                  style={
+                    isActive && !reducedMotion
+                      ? ({
+                          animation:
+                            "wizard-step-pulse 1.8s ease-out infinite",
+                        } as React.CSSProperties)
+                      : undefined
+                  }
+                  aria-current={isActive ? "step" : undefined}
+                >
+                  {isCompleted ? (
+                    <Check className="h-4 w-4" strokeWidth={3} />
+                  ) : (
+                    <span>{i + 1}</span>
+                  )}
+                </div>
+                <span
+                  className={cn(
+                    "hidden text-[10px] font-medium uppercase tracking-wider transition-colors sm:block",
+                    isActive
+                      ? "text-foreground"
+                      : isCompleted
+                        ? "text-foreground/70"
+                        : "text-muted-foreground/70",
+                  )}
+                >
+                  {s.label}
+                </span>
+              </div>
+            </Fragment>
+          );
+        })}
+        </div>
+        <button
+          type="button"
+          onClick={onNext}
+          disabled={!canNext}
+          aria-label="Next step"
+          className="-mt-5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border/60 bg-card text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      </div>
+    </BlurFade>
+  );
+}
+
+const stepperKeyframes = `
+@keyframes wizard-step-pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in oklch, var(--primary) 45%, transparent); }
+  100% { box-shadow: 0 0 0 10px transparent; }
+}
+`;

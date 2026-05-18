@@ -22,6 +22,7 @@ interface EscalationsState {
     patch: Partial<EscalationRuleDraft>,
   ) => Promise<{ error: string | null }>;
   deleteRule: (id: string) => Promise<{ error: string | null }>;
+  clearAllRules: () => Promise<{ error: string | null; cleared: number }>;
   fetchLog: () => Promise<void>;
   runNow: () => Promise<RunEscalationsResult>;
   resolve: (escalationId: string) => Promise<{ error: string | null }>;
@@ -81,6 +82,21 @@ export const useEscalationsStore = create<EscalationsState>((set, get) => ({
     if (error) return { error: error.message };
     set({ rules: get().rules.filter((r) => r.id !== id) });
     return { error: null };
+  },
+
+  clearAllRules: async () => {
+    const ids = get().rules.map((r) => r.id);
+    if (ids.length === 0) return { error: null, cleared: 0 };
+    const { error } = await supabase
+      .from("escalation_rules")
+      .delete()
+      .in("id", ids);
+    if (error) return { error: error.message, cleared: 0 };
+    set({ rules: [] });
+    // Past log rows keep their hydrated rule_name labels in memory; refresh so
+    // the Log tab reflects the ON DELETE SET NULL fallout.
+    await get().fetchLog();
+    return { error: null, cleared: ids.length };
   },
 
   fetchLog: async () => {

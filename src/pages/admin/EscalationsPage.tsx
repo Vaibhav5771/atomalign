@@ -1,7 +1,23 @@
-import { useEffect, useState } from "react";
-import { AlertTriangle, Loader2, Pencil, Play, Plus, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  AlertTriangle,
+  CalendarIcon,
+  Loader2,
+  Pencil,
+  Play,
+  Plus,
+  Trash2,
+} from "lucide-react";
+import { format } from "date-fns";
+import { DotLottieReact } from "@lottiefiles/dotlottie-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Card,
   CardContent,
@@ -37,8 +53,8 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BlurFade } from "@/components/ui/magicui/blur-fade";
+import { AnalyticsEmptyState } from "@/components/admin/AnalyticsEmptyState";
 import { useFocusRefresh } from "@/lib/use-focus-refresh";
-import { useToast } from "@/hooks/use-toast";
 import { useEscalationsStore } from "@/stores/escalationsStore";
 import type {
   EscalateTarget,
@@ -56,8 +72,12 @@ const TRIGGER_LABELS: Record<TriggerType, string> = {
 const TARGET_LABELS: Record<EscalateTarget, string> = {
   EMPLOYEE: "Employee",
   MANAGER: "Manager",
+  // SKIP_LEVEL is kept in the enum for back-compat with seeded/legacy rules
+  // but hidden from the create/edit dropdown. The Admin label maps to the HR
+  // enum value — the evaluator's resolveRecipient() already routes HR to the
+  // first ADMIN profile, so no migration is needed.
   SKIP_LEVEL: "Skip-level",
-  HR: "HR / Admin",
+  HR: "Admin",
 };
 
 const TARGET_BADGE: Record<EscalateTarget, string> = {
@@ -67,6 +87,10 @@ const TARGET_BADGE: Record<EscalateTarget, string> = {
   HR: "bg-rose-600 hover:bg-rose-600",
 };
 
+// Dropdown shows just these three; if an existing rule still has SKIP_LEVEL it
+// is prepended at edit time so the Select keeps a valid current value.
+const VISIBLE_TARGETS: EscalateTarget[] = ["EMPLOYEE", "MANAGER", "HR"];
+
 const DEFAULT_DRAFT: EscalationRuleDraft = {
   name: "",
   trigger_type: "SUBMIT_OVERDUE",
@@ -75,8 +99,36 @@ const DEFAULT_DRAFT: EscalationRuleDraft = {
   is_active: true,
 };
 
+// Cycle opens 1st May per BRD §2.3. Anchor for the "fires on <date>" preview
+// in the rule editor only — the evaluator anchors each rule off the sheet's
+// own created_at/submitted_at/approved_at.
+function cycleOpenAnchor(): Date {
+  const now = new Date();
+  const year = now.getMonth() < 4 ? now.getFullYear() - 1 : now.getFullYear();
+  const d = new Date(year, 4, 1);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function dateFromThreshold(days: number): Date {
+  const d = new Date(cycleOpenAnchor());
+  d.setDate(d.getDate() + days);
+  return d;
+}
+
+function thresholdFromDate(date: Date): number {
+  const anchor = cycleOpenAnchor();
+  const diffMs = date.getTime() - anchor.getTime();
+  return Math.max(1, Math.round(diffMs / 86400000));
+}
+
+type ResultState = {
+  status: "success" | "error";
+  title: string;
+  message: string;
+} | null;
+
 export default function EscalationsPage() {
-  const { toast } = useToast();
   const {
     rules,
     log,
@@ -86,16 +138,37 @@ export default function EscalationsPage() {
     createRule,
     updateRule,
     deleteRule,
+    clearAllRules,
     fetchLog,
     runNow,
     resolve,
   } = useEscalationsStore();
 
   const [tab, setTab] = useState<"rules" | "log">("rules");
+
+  // Rule editor (create/edit)
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingRule, setEditingRule] = useState<EscalationRule | null>(null);
   const [draft, setDraft] = useState<EscalationRuleDraft>(DEFAULT_DRAFT);
-  const [confirmDelete, setConfirmDelete] = useState<EscalationRule | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [datePopoverOpen, setDatePopoverOpen] = useState(false);
+
+  // Always show VISIBLE_TARGETS; if the rule being edited still has a hidden
+  // value (SKIP_LEVEL) keep it in the option list so the Select stays valid.
+  const targetOptions = useMemo<EscalateTarget[]>(() => {
+    if (VISIBLE_TARGETS.includes(draft.escalate_to)) return VISIBLE_TARGETS;
+    return [draft.escalate_to, ...VISIBLE_TARGETS];
+  }, [draft.escalate_to]);
+
+  // Destructive flows
+  const [deletingRule, setDeletingRule] = useState<EscalationRule | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [clearAllOpen, setClearAllOpen] = useState(false);
+  const [clearing, setClearing] = useState(false);
+
+  // Outcome dialog (success.lottie / error.lottie). Replaces useToast on this
+  // page per the round-7 design-system rule.
+  const [result, setResult] = useState<ResultState>(null);
 
   useEffect(() => {
     void fetchRules();
@@ -124,51 +197,108 @@ export default function EscalationsPage() {
     setDialogOpen(true);
   };
 
-  const onSaveRule = async () => {
+  // Validate locally then hit Supabase directly — admin's confirm is the
+  // submit click itself; outcome dialog (success/error Lottie) is the only
+  // feedback channel.
+  const onSubmitRule = async () => {
     if (!draft.name.trim()) {
-      toast({ title: "Name is required", variant: "destructive" });
+      setResult({
+        status: "error",
+        title: "Name is required",
+        message: "Give the rule a descriptive name before saving.",
+      });
       return;
     }
     if (draft.threshold_days < 1) {
-      toast({ title: "Threshold must be at least 1 day", variant: "destructive" });
+      setResult({
+        status: "error",
+        title: "Threshold too small",
+        message: "Threshold must be at least 1 day.",
+      });
       return;
     }
+    setSaving(true);
     const op = editingRule
       ? updateRule(editingRule.id, draft)
       : createRule(draft);
     const { error } = await op;
+    setSaving(false);
     if (error) {
-      toast({ title: "Save failed", description: error, variant: "destructive" });
+      setResult({
+        status: "error",
+        title: editingRule ? "Could not update rule" : "Could not create rule",
+        message: error,
+      });
       return;
     }
     setDialogOpen(false);
-    toast({ title: editingRule ? "Rule updated" : "Rule created" });
+    setResult({
+      status: "success",
+      title: editingRule ? "Rule updated" : "Rule created",
+      message: `"${draft.name.trim()}" is ${
+        editingRule ? "saved" : "live"
+      } and will be evaluated on the next run.`,
+    });
   };
 
-  const onDeleteRule = async () => {
-    if (!confirmDelete) return;
-    const { error } = await deleteRule(confirmDelete.id);
+  const executeDelete = async () => {
+    if (!deletingRule) return;
+    const name = deletingRule.name;
+    setDeleting(true);
+    const { error } = await deleteRule(deletingRule.id);
+    setDeleting(false);
+    setDeletingRule(null);
     if (error) {
-      toast({ title: "Delete failed", description: error, variant: "destructive" });
+      setResult({
+        status: "error",
+        title: "Could not delete rule",
+        message: error,
+      });
       return;
     }
-    setConfirmDelete(null);
-    toast({ title: "Rule deleted" });
+    setResult({
+      status: "success",
+      title: "Rule deleted",
+      message: `"${name}" has been removed. Past log entries are preserved.`,
+    });
+  };
+
+  const executeClearAll = async () => {
+    setClearing(true);
+    const { error, cleared } = await clearAllRules();
+    setClearing(false);
+    setClearAllOpen(false);
+    if (error) {
+      setResult({
+        status: "error",
+        title: "Could not clear rules",
+        message: error,
+      });
+      return;
+    }
+    setResult({
+      status: "success",
+      title: "All rules cleared",
+      message: `${cleared} rule${
+        cleared === 1 ? "" : "s"
+      } removed. No new escalations will fire until at least one rule is created.`,
+    });
   };
 
   const onRunNow = async () => {
     const res = await runNow();
     if (!res.ok) {
-      toast({
+      setResult({
+        status: "error",
         title: "Run failed",
-        description: res.error ?? "Unknown error",
-        variant: "destructive",
+        message: res.error ?? "Unknown error during evaluation.",
       });
       return;
     }
-    toast({
+    setResult({
+      status: "success",
       title: "Escalations evaluated",
-      description: `${res.fired} fired · ${res.skipped_duplicates} skipped (already fired today) · ${res.evaluated_rules} rules checked.`,
+      message: `${res.fired} fired · ${res.skipped_duplicates} skipped (already fired today) · ${res.evaluated_rules} rules checked.`,
     });
     setTab("log");
   };
@@ -176,258 +306,296 @@ export default function EscalationsPage() {
   const onResolve = async (id: string) => {
     const { error } = await resolve(id);
     if (error) {
-      toast({ title: "Resolve failed", description: error, variant: "destructive" });
-      return;
+      setResult({
+        status: "error",
+        title: "Could not resolve",
+        message: error,
+      });
     }
-    toast({ title: "Marked resolved" });
   };
 
   return (
     <div className="space-y-5 max-w-6xl">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold flex items-center gap-2">
-            <AlertTriangle className="h-6 w-6 text-amber-500" />
+          <h1 className="text-2xl font-semibold tracking-tight leading-tight">
             Escalations
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">
+          <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
             Configure time-based escalation rules and review the log of fired
             notifications.
           </p>
         </div>
-        <Button onClick={onRunNow} disabled={running}>
+        <Button
+          onClick={onRunNow}
+          disabled={running}
+          className="rounded-sm shrink-0"
+        >
           {running ? (
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            <Loader2 className="h-4 w-4 mr-1 animate-spin" />
           ) : (
-            <Play className="h-4 w-4 mr-2" />
+            <Play className="h-4 w-4 mr-1" />
           )}
           {running ? "Running…" : "Run escalations now"}
         </Button>
       </div>
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as "rules" | "log")}>
-        <TabsList>
-          <TabsTrigger value="rules">Rules ({rules.length})</TabsTrigger>
-          <TabsTrigger value="log">Log ({log.length})</TabsTrigger>
+        <TabsList className="rounded-sm">
+          <TabsTrigger value="rules" className="rounded-sm">
+            Rules ({rules.length})
+          </TabsTrigger>
+          <TabsTrigger value="log" className="rounded-sm">
+            Log ({log.length})
+          </TabsTrigger>
         </TabsList>
 
         {/* ============ Tab 1 — Rules ========================================= */}
         <TabsContent value="rules" className="space-y-3">
           <BlurFade>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-3">
-              <div>
-                <CardTitle className="text-base">Escalation rules</CardTitle>
-                <CardDescription>
-                  Each rule fires when its condition has been true for the
-                  threshold period. Build a chain by creating multiple rules for
-                  the same trigger with increasing thresholds + escalating targets.
-                </CardDescription>
-              </div>
-              <Button size="sm" onClick={openCreate}>
-                <Plus className="h-4 w-4 mr-1" />
-                Add rule
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <div className="rounded-lg border border-border bg-card overflow-hidden">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead className="w-44">Trigger</TableHead>
-                      <TableHead className="w-28 text-right">Threshold</TableHead>
-                      <TableHead className="w-32">Escalate to</TableHead>
-                      <TableHead className="w-20 text-center">Active</TableHead>
-                      <TableHead className="w-28 text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {loading && rules.length === 0 ? (
-                      <TableRow>
-                        <TableCell
-                          colSpan={6}
-                          className="text-center text-sm text-muted-foreground py-6"
-                        >
-                          Loading…
-                        </TableCell>
-                      </TableRow>
-                    ) : rules.length === 0 ? (
-                      <TableRow>
-                        <TableCell
-                          colSpan={6}
-                          className="text-center text-sm text-muted-foreground py-6"
-                        >
-                          No rules defined yet.
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      rules.map((r) => (
-                        <TableRow key={r.id}>
-                          <TableCell className="font-medium">{r.name}</TableCell>
-                          <TableCell className="text-sm">
-                            <Badge variant="secondary">
-                              {TRIGGER_LABELS[r.trigger_type]}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-sm tabular-nums text-right">
-                            {r.threshold_days} days
-                          </TableCell>
-                          <TableCell>
-                            <Badge className={TARGET_BADGE[r.escalate_to]}>
-                              {TARGET_LABELS[r.escalate_to]}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <Switch
-                              checked={r.is_active}
-                              onCheckedChange={(v) =>
-                                void updateRule(r.id, { is_active: v })
-                              }
-                            />
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              onClick={() => openEdit(r)}
-                              aria-label="Edit rule"
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              onClick={() => setConfirmDelete(r)}
-                              aria-label="Delete rule"
-                            >
-                              <Trash2 className="h-4 w-4 text-rose-600" />
-                            </Button>
-                          </TableCell>
+            <Card className="rounded-md border-border/60 bg-card">
+              <CardHeader className="flex flex-row items-center justify-between gap-3">
+                <div>
+                  <CardTitle className="text-base">Escalation rules</CardTitle>
+                  <CardDescription>
+                    Each rule fires when its condition has been true for the
+                    threshold period. Build a chain by creating multiple rules
+                    for the same trigger with increasing thresholds + escalating
+                    targets.
+                  </CardDescription>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setClearAllOpen(true)}
+                    disabled={rules.length === 0 || clearing}
+                    className="rounded-sm text-destructive hover:text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4 mr-1" />
+                    Clear all
+                  </Button>
+                  <Button size="sm" onClick={openCreate} className="rounded-sm">
+                    <Plus className="h-4 w-4 mr-1" />
+                    Add rule
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {loading && rules.length === 0 ? (
+                  <div className="rounded-md border border-border/60 bg-card overflow-hidden">
+                    <p className="text-center text-sm text-muted-foreground py-6">
+                      Loading…
+                    </p>
+                  </div>
+                ) : rules.length === 0 ? (
+                  <AnalyticsEmptyState
+                    icon={AlertTriangle}
+                    title="No escalation rules yet"
+                    description="Create your first rule to start chasing overdue submissions, approvals, or check-ins. Rules are evaluated daily at 09:00 UTC."
+                    onRefresh={() => void fetchRules()}
+                    refreshing={loading}
+                  />
+                ) : (
+                  <div className="rounded-md border border-border/60 bg-card overflow-hidden">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Name</TableHead>
+                          <TableHead className="w-44">Trigger</TableHead>
+                          <TableHead className="w-28 text-right">
+                            Threshold
+                          </TableHead>
+                          <TableHead className="w-32">Escalate to</TableHead>
+                          <TableHead className="w-20 text-center">
+                            Active
+                          </TableHead>
+                          <TableHead className="w-28 text-right">
+                            Actions
+                          </TableHead>
                         </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
+                      </TableHeader>
+                      <TableBody>
+                        {rules.map((r) => (
+                          <TableRow key={r.id}>
+                            <TableCell className="font-medium">
+                              {r.name}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              <Badge variant="secondary">
+                                {TRIGGER_LABELS[r.trigger_type]}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-sm tabular-nums text-right">
+                              {r.threshold_days} days
+                            </TableCell>
+                            <TableCell>
+                              <Badge className={TARGET_BADGE[r.escalate_to]}>
+                                {TARGET_LABELS[r.escalate_to]}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <Switch
+                                checked={r.is_active}
+                                onCheckedChange={(v) =>
+                                  void updateRule(r.id, { is_active: v })
+                                }
+                              />
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex justify-end gap-1">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  onClick={() => openEdit(r)}
+                                  aria-label="Edit rule"
+                                  className="rounded-sm"
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  onClick={() => setDeletingRule(r)}
+                                  aria-label="Delete rule"
+                                  className="rounded-sm text-destructive hover:text-destructive"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </BlurFade>
         </TabsContent>
 
         {/* ============ Tab 2 — Log =========================================== */}
         <TabsContent value="log" className="space-y-3">
           <BlurFade>
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Escalation log</CardTitle>
-              <CardDescription>
-                Every fired escalation, newest first. Click "Resolve" once the
-                issue has been addressed to suppress further visual noise.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="rounded-lg border border-border bg-card overflow-hidden">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-44">Fired</TableHead>
-                      <TableHead>Subject</TableHead>
-                      <TableHead className="w-44">Trigger</TableHead>
-                      <TableHead>Recipient</TableHead>
-                      <TableHead>Reason</TableHead>
-                      <TableHead className="w-28 text-right">Action</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {loading && log.length === 0 ? (
+            <Card className="rounded-md border-border/60 bg-card">
+              <CardHeader>
+                <CardTitle className="text-base">Escalation log</CardTitle>
+                <CardDescription>
+                  Every fired escalation, newest first. Click "Resolve" once the
+                  issue has been addressed to suppress further visual noise.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="rounded-md border border-border/60 bg-card overflow-hidden">
+                  <Table>
+                    <TableHeader>
                       <TableRow>
-                        <TableCell
-                          colSpan={6}
-                          className="text-center text-sm text-muted-foreground py-6"
-                        >
-                          Loading…
-                        </TableCell>
+                        <TableHead className="w-44">Fired</TableHead>
+                        <TableHead>Subject</TableHead>
+                        <TableHead className="w-44">Trigger</TableHead>
+                        <TableHead>Recipient</TableHead>
+                        <TableHead>Reason</TableHead>
+                        <TableHead className="w-28 text-right">Action</TableHead>
                       </TableRow>
-                    ) : log.length === 0 ? (
-                      <TableRow>
-                        <TableCell
-                          colSpan={6}
-                          className="text-center text-sm text-muted-foreground py-6"
-                        >
-                          No escalations fired yet. Click "Run escalations now"
-                          to evaluate the active rules against current data.
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      log.map((e) => (
-                        <TableRow
-                          key={e.id}
-                          className={e.resolved_at ? "opacity-60" : ""}
-                        >
-                          <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                            {new Date(e.fired_at).toLocaleString()}
-                          </TableCell>
-                          <TableCell className="text-sm">
-                            <div className="font-medium">
-                              {e.subject?.full_name ?? "—"}
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              {e.subject?.email ?? ""}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="secondary">
-                              {TRIGGER_LABELS[e.trigger_type]}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-sm">
-                            {e.recipient?.full_name ?? (
-                              <span className="text-muted-foreground italic">
-                                no recipient
-                              </span>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-sm max-w-md">
-                            {e.reason_text}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {e.resolved_at ? (
-                              <Badge variant="outline" className="text-emerald-600">
-                                Resolved
-                              </Badge>
-                            ) : (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => onResolve(e.id)}
-                              >
-                                Resolve
-                              </Button>
-                            )}
+                    </TableHeader>
+                    <TableBody>
+                      {loading && log.length === 0 ? (
+                        <TableRow>
+                          <TableCell
+                            colSpan={6}
+                            className="text-center text-sm text-muted-foreground py-6"
+                          >
+                            Loading…
                           </TableCell>
                         </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
+                      ) : log.length === 0 ? (
+                        <TableRow>
+                          <TableCell
+                            colSpan={6}
+                            className="text-center text-sm text-muted-foreground py-6"
+                          >
+                            No escalations fired yet. Click "Run escalations
+                            now" to evaluate the active rules against current
+                            data.
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        log.map((e) => (
+                          <TableRow
+                            key={e.id}
+                            className={e.resolved_at ? "opacity-60" : ""}
+                          >
+                            <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                              {new Date(e.fired_at).toLocaleString()}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              <div className="font-medium">
+                                {e.subject?.full_name ?? "—"}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                {e.subject?.email ?? ""}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="secondary">
+                                {TRIGGER_LABELS[e.trigger_type]}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {e.recipient?.full_name ?? (
+                                <span className="text-muted-foreground italic">
+                                  no recipient
+                                </span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-sm max-w-md">
+                              {e.reason_text}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {e.resolved_at ? (
+                                <Badge
+                                  variant="outline"
+                                  className="text-emerald-600"
+                                >
+                                  Resolved
+                                </Badge>
+                              ) : (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => onResolve(e.id)}
+                                  className="rounded-sm"
+                                >
+                                  Resolve
+                                </Button>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
           </BlurFade>
         </TabsContent>
       </Tabs>
 
       {/* ============ Rule editor dialog ====================================== */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="rounded-md border border-border/60 bg-card shadow-2xl shadow-black/40 sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>
+            <DialogTitle className="text-xl font-semibold tracking-tight leading-tight">
               {editingRule ? "Edit rule" : "Create escalation rule"}
             </DialogTitle>
             <DialogDescription>
-              Rules are evaluated daily at 09:00 UTC and on demand via the
-              "Run escalations now" button.
+              Rules are evaluated daily at 09:00 UTC and on demand via the "Run
+              escalations now" button.
             </DialogDescription>
           </DialogHeader>
 
@@ -464,19 +632,44 @@ export default function EscalationsPage() {
             </div>
 
             <div className="space-y-1">
-              <Label htmlFor="rule_threshold">Threshold (days)</Label>
-              <Input
-                id="rule_threshold"
-                type="number"
-                min={1}
-                value={draft.threshold_days}
-                onChange={(e) =>
-                  setDraft({
-                    ...draft,
-                    threshold_days: Number(e.target.value) || 1,
-                  })
-                }
-              />
+              <Label htmlFor="rule_threshold">Fires on</Label>
+              <Popover
+                open={datePopoverOpen}
+                onOpenChange={setDatePopoverOpen}
+              >
+                <PopoverTrigger asChild>
+                  <Button
+                    id="rule_threshold"
+                    type="button"
+                    variant="outline"
+                    className="w-full justify-start text-left font-normal h-9 rounded-sm"
+                  >
+                    <CalendarIcon className="h-3.5 w-3.5 mr-2 opacity-70" />
+                    {format(dateFromThreshold(draft.threshold_days), "PPP")}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="start" className="p-0">
+                  <Calendar
+                    mode="single"
+                    selected={dateFromThreshold(draft.threshold_days)}
+                    onSelect={(d) => {
+                      if (!d) return;
+                      setDraft({
+                        ...draft,
+                        threshold_days: thresholdFromDate(d),
+                      });
+                      setDatePopoverOpen(false);
+                    }}
+                    disabled={(date) => date <= cycleOpenAnchor()}
+                    autoFocus
+                  />
+                </PopoverContent>
+              </Popover>
+              <p className="text-xs text-muted-foreground">
+                {draft.threshold_days} day
+                {draft.threshold_days === 1 ? "" : "s"} from cycle open (
+                {format(cycleOpenAnchor(), "PPP")}).
+              </p>
             </div>
 
             <div className="space-y-1">
@@ -491,7 +684,7 @@ export default function EscalationsPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {(Object.keys(TARGET_LABELS) as EscalateTarget[]).map((t) => (
+                  {targetOptions.map((t) => (
                     <SelectItem key={t} value={t}>
                       {TARGET_LABELS[t]}
                     </SelectItem>
@@ -512,11 +705,22 @@ export default function EscalationsPage() {
             </div>
           </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+          <DialogFooter className="pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setDialogOpen(false)}
+              disabled={saving}
+              className="rounded-sm"
+            >
               Cancel
             </Button>
-            <Button onClick={onSaveRule}>
+            <Button
+              onClick={() => void onSubmitRule()}
+              disabled={saving}
+              className="rounded-sm"
+            >
+              {saving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
               {editingRule ? "Save changes" : "Create rule"}
             </Button>
           </DialogFooter>
@@ -525,24 +729,143 @@ export default function EscalationsPage() {
 
       {/* ============ Delete confirm dialog =================================== */}
       <Dialog
-        open={!!confirmDelete}
-        onOpenChange={(open) => !open && setConfirmDelete(null)}
+        open={!!deletingRule}
+        onOpenChange={(o) => {
+          if (!deleting && !o) setDeletingRule(null);
+        }}
       >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Delete escalation rule?</DialogTitle>
-            <DialogDescription>
-              This will permanently remove "{confirmDelete?.name}". Existing log
-              entries from past fires of this rule will be preserved but their
-              link to the rule will be cleared.
+        <DialogContent
+          showCloseButton={false}
+          className="overflow-hidden rounded-md border border-border/60 bg-card p-5 text-foreground shadow-2xl shadow-black/40 sm:max-w-md"
+        >
+          <DialogHeader className="items-center text-center">
+            <DialogTitle className="text-lg font-semibold tracking-tight">
+              Delete this rule?
+            </DialogTitle>
+            <DialogDescription className="text-sm text-muted-foreground">
+              This permanently removes{" "}
+              <strong>{deletingRule?.name}</strong>. Past log entries are
+              preserved but lose their link to the rule. This cannot be undone.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmDelete(null)}>
+
+          <DialogFooter className="mt-4 gap-2 sm:gap-2 sm:justify-center">
+            <Button
+              variant="ghost"
+              className="rounded-sm"
+              disabled={deleting}
+              onClick={() => setDeletingRule(null)}
+            >
               Cancel
             </Button>
-            <Button variant="destructive" onClick={onDeleteRule}>
-              Delete rule
+            <Button
+              variant="destructive"
+              className="rounded-sm"
+              disabled={deleting}
+              onClick={() => void executeDelete()}
+            >
+              {deleting && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+              {deleting ? "Deleting…" : "Yes, delete rule"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ============ Clear-all confirm dialog ================================ */}
+      <Dialog
+        open={clearAllOpen}
+        onOpenChange={(o) => {
+          if (!clearing) setClearAllOpen(o);
+        }}
+      >
+        <DialogContent
+          showCloseButton={false}
+          className="overflow-hidden rounded-md border border-border/60 bg-card p-5 text-foreground shadow-2xl shadow-black/40 sm:max-w-md"
+        >
+          <DialogHeader className="items-center text-center">
+            <DialogTitle className="text-lg font-semibold tracking-tight">
+              Clear all rules?
+            </DialogTitle>
+            <DialogDescription className="text-sm text-muted-foreground">
+              Removes every escalation rule in one shot. Past log entries are
+              preserved (with rule names cleared) but no new escalations will
+              fire until at least one rule is created. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="mt-2 space-y-3 max-h-[40vh] overflow-y-auto scrollbar-hide pr-1">
+            <div className="rounded-md border border-border/60 bg-card p-3">
+              <div className="text-[0.65rem] uppercase tracking-wider text-muted-foreground">
+                Will remove
+              </div>
+              <div className="text-sm font-semibold leading-tight mt-1 tabular-nums">
+                {rules.length} rule{rules.length === 1 ? "" : "s"}
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="mt-4 gap-2 sm:gap-2 sm:justify-center">
+            <Button
+              variant="ghost"
+              className="rounded-sm"
+              disabled={clearing}
+              onClick={() => setClearAllOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              className="rounded-sm"
+              disabled={clearing}
+              onClick={() => void executeClearAll()}
+            >
+              {clearing && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+              {clearing ? "Clearing…" : "Yes, clear everything"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ============ Outcome dialog ========================================== */}
+      <Dialog
+        open={!!result}
+        onOpenChange={(o) => {
+          if (!o) setResult(null);
+        }}
+      >
+        <DialogContent
+          showCloseButton={false}
+          className="overflow-hidden rounded-md border border-border/60 bg-card p-5 text-foreground shadow-2xl shadow-black/40 sm:max-w-md"
+        >
+          <DialogHeader className="items-center text-center">
+            <div className="mx-auto h-28 w-28">
+              {result && (
+                <DotLottieReact
+                  key={result.status}
+                  src={
+                    result.status === "success"
+                      ? "/success.lottie"
+                      : "/error.lottie"
+                  }
+                  autoplay
+                  loop={false}
+                />
+              )}
+            </div>
+            <DialogTitle className="text-lg font-semibold tracking-tight">
+              {result?.title}
+            </DialogTitle>
+            <DialogDescription className="text-sm text-muted-foreground">
+              {result?.message}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-4 gap-2 sm:gap-2 sm:justify-center">
+            <Button
+              className="rounded-sm"
+              variant={result?.status === "success" ? "default" : "outline"}
+              onClick={() => setResult(null)}
+            >
+              {result?.status === "success" ? "OK" : "Close"}
             </Button>
           </DialogFooter>
         </DialogContent>

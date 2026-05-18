@@ -1,5 +1,7 @@
-import { useEffect, useState } from "react";
-import { Loader2, AlertTriangle } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Loader2, CalendarIcon, Lock } from "lucide-react";
+import { format } from "date-fns";
+import { DotLottieReact } from "@lottiefiles/dotlottie-react";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,9 +24,26 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
+import { Slider } from "@/components/ui/slider";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import { useToast } from "@/hooks/use-toast";
 import { useAuthStore } from "@/stores/authStore";
 import { currentCycleYear } from "@/stores/goalSheetStore";
+import { BlurFade } from "@/components/ui/magicui/blur-fade";
+import { NumberTicker } from "@/components/ui/magicui/number-ticker";
+import { AnimatedCircularProgress } from "@/components/ui/magicui/animated-circular-progress";
+import { NumericStepper } from "@/components/shared/NumericStepper";
+import {
+  TeamTree,
+  type SummaryEmployeeNode,
+  type SummaryManagerNode,
+} from "@/components/admin/TeamTree";
+import { cn } from "@/lib/utils";
 import type { Profile, SheetStatus, UoMType } from "@/types";
 
 interface FormState {
@@ -33,6 +52,7 @@ interface FormState {
   description: string;
   uom: UoMType;
   target: string;
+  target_date: string;
   weightage: number;
 }
 
@@ -42,8 +62,44 @@ const EMPTY: FormState = {
   description: "",
   uom: "NUMERIC",
   target: "",
+  target_date: "",
   weightage: 10,
 };
+
+const UOM_META: Record<UoMType, { label: string; hint: string }> = {
+  NUMERIC: {
+    label: "Numeric — revenue, count, units",
+    hint: "Enter a number, e.g. 50000000 for ₹5 Cr or 200 for units sold.",
+  },
+  PERCENT: {
+    label: "Percent — completion %, NPS",
+    hint: "Enter a value 0–100. No % sign needed.",
+  },
+  TIMELINE: {
+    label: "Timeline — deadline-based",
+    hint: "Pick the target date. Score is binary on the deadline.",
+  },
+  ZERO: {
+    label: "Zero-based — zero incidents = success",
+    hint: "Target is locked at 0. Scores 100% only when actual = 0.",
+  },
+};
+
+// Red-glow indicator for invalid inputs and section wrappers. Mirrors the soft
+// primary focus style but uses the destructive token, so an empty field reads
+// as "missing" rather than "broken".
+const errorGlowClass =
+  "border-destructive/55 ring-1 ring-destructive/20 shadow-[0_0_18px_-8px_color-mix(in_oklch,var(--destructive)_55%,transparent)]";
+const errorGlowWrapperClass =
+  "ring-1 ring-destructive/30 shadow-[0_0_18px_-8px_color-mix(in_oklch,var(--destructive)_55%,transparent)]";
+
+function formatLargeNumber(n: number): string {
+  if (!Number.isFinite(n) || n === 0) return "0";
+  if (Math.abs(n) >= 1_00_00_000) return `≈ ${(n / 1_00_00_000).toFixed(2)} Cr`;
+  if (Math.abs(n) >= 1_00_000) return `≈ ${(n / 1_00_000).toFixed(2)} L`;
+  if (Math.abs(n) >= 1_000) return `≈ ${(n / 1_000).toFixed(1)} K`;
+  return "";
+}
 
 type PrecheckRow = {
   employeeId: string;
@@ -56,8 +112,22 @@ type PrecheckRow = {
   reason: string;
 };
 
-const REOPEN_REMARK =
-  "[Reopened by admin] A shared goal was pushed to this sheet. Please rebalance weightages and resubmit for re-approval.";
+// A "past shared goal" is a deduped signature across all individual goal rows
+// that were pushed together. Same (title, thrust, uom, target, weightage,
+// shared_by) batched at the same minute = one logical push.
+interface PastSharedGoal {
+  key: string;
+  title: string;
+  thrust_area: string;
+  description: string | null;
+  uom: UoMType;
+  target: string;
+  target_date: string | null;
+  weightage: number;
+  created_at: string;
+  recipientCount: number;
+  recipientNames: string[];
+}
 
 export default function SharedGoalsPage() {
   const { toast } = useToast();
@@ -70,6 +140,134 @@ export default function SharedGoalsPage() {
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [precheck, setPrecheck] = useState<PrecheckRow[]>([]);
+  const [datePopoverOpen, setDatePopoverOpen] = useState(false);
+  const [pastOpen, setPastOpen] = useState(false);
+  const [pastGoals, setPastGoals] = useState<PastSharedGoal[]>([]);
+  const [pastLoading, setPastLoading] = useState(false);
+  // Outcome dialog shown after the push completes. status drives icon, copy,
+  // and CTA label (OK on success, Close on error).
+  const [result, setResult] = useState<{
+    status: "success" | "error";
+    title: string;
+    message: string;
+  } | null>(null);
+
+  // Per-field validation surfaces. Empty string = valid, anything truthy
+  // becomes a red-glow indicator on that input until the user edits it.
+  type FieldErrors = {
+    thrust_area?: string;
+    title?: string;
+    target?: string;
+    target_date?: string;
+    recipients?: string;
+  };
+  const [errors, setErrors] = useState<FieldErrors>({});
+  const clearError = (key: keyof FieldErrors) =>
+    setErrors((prev) => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+
+  // Load past shared goals on-demand the first time the dialog opens.
+  // Groups raw `goals` rows by their content signature so a single push to N
+  // recipients shows up as one card with `recipientCount === N`.
+  useEffect(() => {
+    if (!pastOpen) return;
+    if (!currentUser?.id) return;
+    let cancelled = false;
+    setPastLoading(true);
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from("goals")
+          .select(
+            "id, thrust_area, title, description, uom, target, target_date, weightage, created_at, sheet:goal_sheets(employee:profiles!goal_sheets_employee_id_fkey(id, full_name, email))",
+          )
+          .eq("is_shared", true)
+          .eq("shared_by", currentUser.id)
+          .order("created_at", { ascending: false });
+        if (error) throw error;
+        if (cancelled) return;
+
+        // Group rows whose content+minute matches — that's "one push".
+        const groups = new Map<string, PastSharedGoal>();
+        for (const row of data ?? []) {
+          const r = row as unknown as {
+            id: string;
+            thrust_area: string;
+            title: string;
+            description: string | null;
+            uom: UoMType;
+            target: string;
+            target_date: string | null;
+            weightage: number;
+            created_at: string;
+            sheet?:
+              | { employee?: { id: string; full_name: string | null; email: string } | null }
+              | null;
+          };
+          const minuteBucket = r.created_at.slice(0, 16); // YYYY-MM-DDTHH:MM
+          const key = [
+            r.title,
+            r.thrust_area,
+            r.uom,
+            r.target,
+            r.target_date ?? "",
+            r.weightage,
+            minuteBucket,
+          ].join("|");
+          const recipient =
+            r.sheet?.employee?.full_name || r.sheet?.employee?.email || "Unknown";
+          const existing = groups.get(key);
+          if (existing) {
+            existing.recipientCount += 1;
+            existing.recipientNames.push(recipient);
+          } else {
+            groups.set(key, {
+              key,
+              title: r.title,
+              thrust_area: r.thrust_area,
+              description: r.description,
+              uom: r.uom,
+              target: r.target,
+              target_date: r.target_date,
+              weightage: r.weightage,
+              created_at: r.created_at,
+              recipientCount: 1,
+              recipientNames: [recipient],
+            });
+          }
+        }
+        setPastGoals(Array.from(groups.values()));
+      } catch (e) {
+        if (!cancelled) {
+          toast({
+            title: "Could not load past shared goals",
+            description: e instanceof Error ? e.message : String(e),
+            variant: "destructive",
+          });
+        }
+      } finally {
+        if (!cancelled) setPastLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [pastOpen, currentUser?.id, toast]);
+
+  // Keep the text Target in sync when UoM switches — mirrors GoalForm logic so
+  // that TIMELINE/ZERO goals always store a sensible `target` value.
+  useEffect(() => {
+    if (form.uom === "ZERO" && form.target !== "0") {
+      setForm((f) => ({ ...f, target: "0" }));
+    }
+    if (form.uom === "TIMELINE" && form.target_date) {
+      setForm((f) => ({ ...f, target: f.target_date }));
+    }
+  }, [form.uom, form.target_date, form.target]);
 
   useEffect(() => {
     void (async () => {
@@ -77,10 +275,15 @@ export default function SharedGoalsPage() {
       const { data, error } = await supabase
         .from("profiles")
         .select("*")
-        .eq("role", "EMPLOYEE")
+        .in("role", ["EMPLOYEE", "MANAGER"])
+        .order("role", { ascending: true })
         .order("full_name", { ascending: true });
       if (error) {
-        toast({ title: "Could not load employees", description: error.message, variant: "destructive" });
+        toast({
+          title: "Could not load recipients",
+          description: error.message,
+          variant: "destructive",
+        });
       }
       setEmployees((data ?? []) as Profile[]);
       setLoading(false);
@@ -94,6 +297,7 @@ export default function SharedGoalsPage() {
       else next.add(id);
       return next;
     });
+    clearError("recipients");
   };
 
   const toggleAll = () => {
@@ -104,85 +308,36 @@ export default function SharedGoalsPage() {
     }
   };
 
-  const validate = (): string | null => {
-    if (!form.thrust_area.trim()) return "Thrust area is required";
-    if (!form.title.trim()) return "Title is required";
-    if (!form.target.trim()) return "Target is required";
-    if (form.weightage < 10 || form.weightage > 100) return "Weightage must be between 10 and 100";
-    if (selected.size === 0) return "Select at least one employee";
-    return null;
-  };
-
-  const runPrecheck = async (employeeIds: string[]): Promise<PrecheckRow[]> => {
-    const rows: PrecheckRow[] = [];
-    for (const empId of employeeIds) {
-      const profile = employees.find((p) => p.id === empId);
-      const name = profile?.full_name || profile?.email || empId;
-
-      const { data: sheet } = await supabase
-        .from("goal_sheets")
-        .select("id, status")
-        .eq("employee_id", empId)
-        .eq("cycle_year", currentCycleYear)
-        .maybeSingle();
-
-      if (!sheet) {
-        rows.push({
-          employeeId: empId,
-          name,
-          sheetId: null,
-          status: null,
-          currentTotal: 0,
-          available: 100,
-          conflict: false,
-          reason: "No sheet yet — will be created",
-        });
-        continue;
-      }
-
-      const { data: goals } = await supabase
-        .from("goals")
-        .select("weightage")
-        .eq("sheet_id", sheet.id);
-
-      const currentTotal = (goals ?? []).reduce(
-        (sum, g: { weightage: number }) => sum + (g.weightage || 0),
-        0,
-      );
-      const available = 100 - currentTotal;
-      const isApproved = sheet.status === "APPROVED";
-      const overflow = form.weightage > available;
-      const conflict = isApproved || overflow;
-
-      let reason = "";
-      if (isApproved && overflow) {
-        reason = `Sheet is APPROVED and total would become ${currentTotal + form.weightage}%`;
-      } else if (isApproved) {
-        reason = "Sheet is APPROVED — goals are locked";
-      } else if (overflow) {
-        reason = `Only ${available}% available — push would make total ${currentTotal + form.weightage}%`;
-      } else {
-        reason = `Total will be ${currentTotal + form.weightage}%`;
-      }
-
-      rows.push({
-        employeeId: empId,
-        name,
-        sheetId: sheet.id,
-        status: sheet.status as SheetStatus,
-        currentTotal,
-        available,
-        conflict,
-        reason,
-      });
+  const validate = (): FieldErrors => {
+    const next: FieldErrors = {};
+    if (!form.thrust_area.trim()) next.thrust_area = "Thrust area is required";
+    if (!form.title.trim()) next.title = "Goal title is required";
+    if (form.uom === "TIMELINE") {
+      if (!form.target_date.trim()) next.target_date = "Pick a target deadline";
+    } else if (form.uom === "NUMERIC" || form.uom === "PERCENT") {
+      const n = Number(form.target);
+      if (!form.target.trim() || Number.isNaN(n) || n <= 0)
+        next.target = "Target must be a positive number";
+      else if (form.uom === "PERCENT" && n > 100)
+        next.target = "Percent target cannot exceed 100";
     }
-    return rows;
+    if (selected.size === 0) next.recipients = "Select at least one recipient";
+    return next;
   };
 
+  // Look up an existing sheet for this cycle, create a DRAFT one if missing,
+  // then insert the shared goal. Sheet conflicts (approved / weightage overflow)
+  // bubble up as the returned error message and surface in the result dialog.
   const pushOne = async (row: PrecheckRow): Promise<string | null> => {
-    let sheetId = row.sheetId;
+    const { data: existingSheet } = await supabase
+      .from("goal_sheets")
+      .select("id")
+      .eq("employee_id", row.employeeId)
+      .eq("cycle_year", currentCycleYear)
+      .maybeSingle();
 
-    // Create sheet if missing
+    let sheetId = existingSheet?.id ?? null;
+
     if (!sheetId) {
       const { data: created, error: cErr } = await supabase
         .from("goal_sheets")
@@ -204,6 +359,7 @@ export default function SharedGoalsPage() {
       description: form.description.trim() || null,
       uom: form.uom,
       target: form.target,
+      target_date: form.uom === "TIMELINE" ? form.target_date : null,
       weightage: form.weightage,
       is_shared: true,
       is_locked: false,
@@ -213,96 +369,51 @@ export default function SharedGoalsPage() {
     return null;
   };
 
-  const reopenAndPush = async (row: PrecheckRow): Promise<string | null> => {
-    if (!row.sheetId) return pushOne(row);
-
-    // 1. Unlock all goals on the sheet. .select() lets us detect silent RLS
-    //    failures: zero rows returned where rows were expected.
-    const { data: unlocked, error: unlockErr } = await supabase
-      .from("goals")
-      .update({ is_locked: false })
-      .eq("sheet_id", row.sheetId)
-      .select("id, is_locked");
-    if (unlockErr) return unlockErr.message;
-    if (!unlocked || unlocked.length === 0) {
-      return "Could not unlock goals — admin update policy missing. Apply migration 0003_admin_reopen.sql.";
-    }
-
-    // 2. Move sheet back to RETURNED with a remark and reopen attribution.
-    //    .single() throws if RLS silently returns 0 rows.
-    const { data: updatedSheet, error: sErr } = await supabase
-      .from("goal_sheets")
-      .update({
-        status: "RETURNED",
-        manager_remark: REOPEN_REMARK,
-        submitted_at: null,
-        approved_at: null,
-        reopened_by: currentUser?.id ?? null,
-        reopened_at: new Date().toISOString(),
-      })
-      .eq("id", row.sheetId)
-      .select()
-      .single();
-    if (sErr) return sErr.message;
-    if (!updatedSheet) {
-      return "Could not reopen sheet — admin update policy missing. Apply migration 0003_admin_reopen.sql.";
-    }
-
-    // 3. Audit log for the reopen
-    if (currentUser?.id) {
-      await supabase.from("audit_logs").insert({
-        sheet_id: row.sheetId,
-        changed_by: currentUser.id,
-        action: "REOPEN_BY_ADMIN",
-        new_value: { status: "RETURNED", reason: REOPEN_REMARK },
+  const handlePushClick = () => {
+    const fieldErrors = validate();
+    if (Object.keys(fieldErrors).length > 0) {
+      setErrors(fieldErrors);
+      const first = Object.values(fieldErrors)[0];
+      toast({
+        title: "Fix the highlighted fields",
+        description: first,
+        variant: "destructive",
       });
-    }
-
-    // 4. Insert the shared goal
-    return pushOne(row);
-  };
-
-  const handlePushClick = async () => {
-    const err = validate();
-    if (err) {
-      toast({ title: "Cannot push", description: err, variant: "destructive" });
       return;
     }
-    setPushing(true);
-    const rows = await runPrecheck(Array.from(selected));
-    setPushing(false);
-
-    const anyConflict = rows.some((r) => r.conflict);
-    if (!anyConflict) {
-      // Straight through
-      await executePush(rows, /*reopen*/ false);
-      return;
-    }
-
-    // Show confirmation modal
+    setErrors({});
+    // Build the summary entirely from local state — recipient names already
+    // come from the loaded `employees` array, so there's no need to hit
+    // Supabase before showing the confirm dialog. Per-sheet conflict detection
+    // happens inside `pushOne` at write time and surfaces in the result dialog.
+    const rows: PrecheckRow[] = Array.from(selected).map((id) => {
+      const profile = employees.find((p) => p.id === id);
+      return {
+        employeeId: id,
+        name: profile?.full_name || profile?.email || id,
+        sheetId: null,
+        status: null,
+        currentTotal: 0,
+        available: 100,
+        conflict: false,
+        reason: "",
+      };
+    });
     setPrecheck(rows);
     setConfirmOpen(true);
   };
 
-  const executePush = async (rows: PrecheckRow[], reopenConflicts: boolean) => {
+  const executePush = async (rows: PrecheckRow[]) => {
     setPushing(true);
     let success = 0;
-    let skipped = 0;
-    let reopened = 0;
     const errors: string[] = [];
 
     for (const row of rows) {
-      if (row.conflict && !reopenConflicts) {
-        skipped++;
-        continue;
-      }
-      const reason =
-        row.conflict && reopenConflicts ? await reopenAndPush(row) : await pushOne(row);
+      const reason = await pushOne(row);
       if (reason) {
         errors.push(`${row.name}: ${reason}`);
       } else {
         success++;
-        if (row.conflict) reopened++;
       }
     }
 
@@ -312,158 +423,478 @@ export default function SharedGoalsPage() {
 
     if (success > 0) {
       const parts: string[] = [];
-      if (reopened > 0) parts.push(`${reopened} sheet${reopened > 1 ? "s" : ""} reopened`);
-      if (skipped > 0) parts.push(`${skipped} skipped`);
       if (errors.length > 0) parts.push(`${errors.length} failed`);
-      toast({
-        title: `Pushed to ${success} employee${success > 1 ? "s" : ""}`,
-        description: parts.join(" · ") || undefined,
+      setResult({
+        status: "success",
+        title: `Pushed to ${success} ${success === 1 ? "recipient" : "recipients"}`,
+        message:
+          parts.length > 0
+            ? parts.join(" · ")
+            : "The shared goal is now on their cycle sheet.",
       });
       setForm(EMPTY);
       setSelected(new Set());
     } else if (errors.length > 0) {
-      toast({ title: "Push failed", description: errors[0], variant: "destructive" });
+      setResult({
+        status: "error",
+        title: "Push failed",
+        message: errors[0],
+      });
     } else {
-      toast({
+      setResult({
+        status: "error",
         title: "Nothing pushed",
-        description: "All selected recipients were skipped.",
-        variant: "destructive",
+        message: "All selected recipients were skipped.",
       });
     }
   };
 
   const allSelected = employees.length > 0 && selected.size === employees.length;
 
-  const conflicts = precheck.filter((r) => r.conflict);
-  const clean = precheck.filter((r) => !r.conflict);
+  // Group profiles into the same manager → employee tree the wizard / view-team
+  // dialog uses. Employees whose manager isn't in the workspace fall under an
+  // "Unassigned" pseudo-manager so they still show up.
+  const recipientTree = useMemo<SummaryManagerNode[]>(() => {
+    const managers = employees.filter((p) => p.role === "MANAGER");
+    const emps = employees.filter((p) => p.role === "EMPLOYEE");
+    const map = new Map<string, SummaryManagerNode>();
+    managers.forEach((m) => {
+      map.set(m.id, {
+        mgrId: m.id,
+        mgrName: m.full_name || m.email,
+        mgrEmail: m.email,
+        mgrRole: m.role || "MANAGER",
+        isNew: false,
+        employees: [],
+      });
+    });
+    const orphans: SummaryEmployeeNode[] = [];
+    emps.forEach((e) => {
+      const mgrNode = e.manager_id ? map.get(e.manager_id) : null;
+      const node: SummaryEmployeeNode = {
+        id: e.id,
+        full_name: e.full_name || e.email,
+        email: e.email,
+        isNew: false,
+      };
+      if (mgrNode) mgrNode.employees.push(node);
+      else orphans.push(node);
+    });
+    const tree = Array.from(map.values());
+    if (orphans.length > 0) {
+      tree.push({
+        mgrName: "Unassigned",
+        mgrEmail: "—",
+        mgrRole: "—",
+        isNew: false,
+        employees: orphans,
+      });
+    }
+    return tree;
+  }, [employees]);
+
+
+  const uomMeta = UOM_META[form.uom];
+  const numericTarget = Number(form.target) || 0;
 
   return (
     <div className="space-y-5 max-w-5xl">
-      <div>
-        <h1 className="text-2xl font-semibold">Push shared goal</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Create a goal and push it to the goal sheets of selected employees. Recipients can change
-          weightage only; title and target are locked.
-        </p>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Goal details</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <Label htmlFor="ta">Thrust area</Label>
-              <Input
-                id="ta"
-                value={form.thrust_area}
-                onChange={(e) => setForm({ ...form, thrust_area: e.target.value })}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="title">Goal title</Label>
-              <Input
-                id="title"
-                value={form.title}
-                onChange={(e) => setForm({ ...form, title: e.target.value })}
-              />
-            </div>
+      <BlurFade>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight leading-tight">
+              Push shared goal
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
+              Author one organisation-wide goal and cascade it to selected
+              employees and managers on cycle {currentCycleYear} sheets.
+              Recipients can tune weightage only — title and target stay locked.
+            </p>
           </div>
-          <div className="space-y-1">
-            <Label htmlFor="desc">Description (optional)</Label>
-            <Textarea
-              id="desc"
-              rows={2}
-              value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
-            />
-          </div>
-          <div className="grid grid-cols-3 gap-3">
-            <div className="space-y-1">
-              <Label htmlFor="uom">UoM</Label>
-              <Select
-                value={form.uom}
-                onValueChange={(v) => setForm({ ...form, uom: v as UoMType })}
-              >
-                <SelectTrigger id="uom">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="NUMERIC">Numeric</SelectItem>
-                  <SelectItem value="PERCENT">Percent</SelectItem>
-                  <SelectItem value="TIMELINE">Timeline</SelectItem>
-                  <SelectItem value="ZERO">Zero target</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="target">Target</Label>
-              <Input
-                id="target"
-                value={form.target}
-                onChange={(e) => setForm({ ...form, target: e.target.value })}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="wt">Weightage (%)</Label>
-              <Input
-                id="wt"
-                type="number"
-                step={1}
-                inputMode="numeric"
-                value={form.weightage}
-                onChange={(e) => setForm({ ...form, weightage: Number(e.target.value) || 0 })}
-              />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-base">Recipients</CardTitle>
-          <Button variant="outline" size="sm" onClick={toggleAll} disabled={loading}>
-            {allSelected ? "Clear all" : "Select all"}
+          <Button
+            type="button"
+            variant="outline"
+            className="rounded-sm shrink-0"
+            onClick={() => setPastOpen(true)}
+          >
+            Past shared goals
           </Button>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <p className="text-sm text-muted-foreground">Loading employees…</p>
-          ) : employees.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No employees found.</p>
-          ) : (
-            <div className="grid grid-cols-2 gap-1">
-              {employees.map((e) => (
-                <label
-                  key={e.id}
-                  className="flex items-center gap-2 px-2 py-1.5 border border-border hover:bg-accent cursor-pointer"
-                >
-                  <input
-                    type="checkbox"
-                    checked={selected.has(e.id)}
-                    onChange={() => toggle(e.id)}
-                  />
-                  <div className="text-sm">
-                    <div className="font-medium">{e.full_name || e.email}</div>
-                    <div className="text-xs text-muted-foreground">{e.email}</div>
-                  </div>
-                </label>
-              ))}
+        </div>
+      </BlurFade>
+
+      <BlurFade delay={0.05}>
+        <Card className="rounded-md border-border/60 bg-card">
+          <CardHeader>
+            <CardTitle className="text-base">Goal details</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="ta">Thrust area</Label>
+                <Input
+                  id="ta"
+                  placeholder="e.g. Revenue Growth"
+                  value={form.thrust_area}
+                  onChange={(e) => {
+                    setForm({ ...form, thrust_area: e.target.value });
+                    clearError("thrust_area");
+                  }}
+                  aria-invalid={!!errors.thrust_area}
+                  className={cn(errors.thrust_area && errorGlowClass)}
+                />
+                {errors.thrust_area ? (
+                  <p className="text-xs text-destructive">{errors.thrust_area}</p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Strategic theme this goal supports.
+                  </p>
+                )}
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="title">Goal title</Label>
+                <Input
+                  id="title"
+                  placeholder="e.g. Achieve ₹5 Cr revenue"
+                  value={form.title}
+                  onChange={(e) => {
+                    setForm({ ...form, title: e.target.value });
+                    clearError("title");
+                  }}
+                  aria-invalid={!!errors.title}
+                  className={cn(errors.title && errorGlowClass)}
+                />
+                {errors.title ? (
+                  <p className="text-xs text-destructive">{errors.title}</p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Recipients see this verbatim.
+                  </p>
+                )}
+              </div>
             </div>
+            <div className="space-y-1">
+              <Label htmlFor="desc">Description</Label>
+              <Textarea
+                id="desc"
+                rows={2}
+                placeholder="Why does this matter, and how should employees interpret it?"
+                value={form.description}
+                onChange={(e) => setForm({ ...form, description: e.target.value })}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="uom">Unit of measure</Label>
+                <Select
+                  value={form.uom}
+                  onValueChange={(v) => setForm({ ...form, uom: v as UoMType })}
+                >
+                  <SelectTrigger id="uom">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(Object.keys(UOM_META) as UoMType[]).map((k) => (
+                      <SelectItem key={k} value={k}>
+                        {UOM_META[k].label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">{uomMeta.hint}</p>
+              </div>
+
+              {/* Target column — switches based on UoM */}
+              <div className="space-y-1">
+                {form.uom === "NUMERIC" && (
+                  <>
+                    <Label htmlFor="target">Target value</Label>
+                    <NumericStepper
+                      id="target"
+                      value={form.target}
+                      onChange={(v) => {
+                        setForm({ ...form, target: v });
+                        clearError("target");
+                      }}
+                      placeholder="e.g. 50000000"
+                      className={cn(errors.target && errorGlowWrapperClass)}
+                    />
+                    {errors.target && (
+                      <p className="text-xs text-destructive">{errors.target}</p>
+                    )}
+                    <div
+                      className={cn(
+                        "mt-1 rounded-md border border-primary/30 bg-primary/[0.06] px-2.5 py-1.5",
+                        "shadow-[0_0_18px_-10px_color-mix(in_oklch,var(--primary)_55%,transparent)]",
+                      )}
+                    >
+                      <div className="text-[0.6rem] uppercase tracking-wider text-muted-foreground">
+                        Preview
+                      </div>
+                      <div className="text-base font-semibold tabular-nums text-primary leading-tight">
+                        <NumberTicker value={numericTarget} />
+                      </div>
+                      {formatLargeNumber(numericTarget) && (
+                        <div className="text-[0.65rem] text-muted-foreground">
+                          {formatLargeNumber(numericTarget)}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+                {form.uom === "PERCENT" && (
+                  <>
+                    <Label htmlFor="target">Target percent</Label>
+                    <div
+                      className={cn(
+                        "flex items-center gap-3 pt-1 rounded-md px-1",
+                        errors.target && errorGlowWrapperClass,
+                      )}
+                    >
+                      <div className="flex-1 space-y-1.5">
+                        <Slider
+                          id="target"
+                          value={[Number(form.target) || 0]}
+                          min={0}
+                          max={100}
+                          step={10}
+                          onValueChange={(v) => {
+                            setForm({ ...form, target: String(v[0] ?? 0) });
+                            clearError("target");
+                          }}
+                        />
+                        <div className="flex justify-between text-[0.6rem] text-muted-foreground tabular-nums px-1">
+                          {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map(
+                            (t) => (
+                              <span key={t}>{t}</span>
+                            ),
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <AnimatedCircularProgress
+                          value={Math.max(0, Math.min(100, Number(form.target) || 0))}
+                          size={48}
+                          strokeWidth={5}
+                          showValue={false}
+                        />
+                        <div className="w-12 text-right text-sm font-semibold tabular-nums text-primary">
+                          <NumberTicker
+                            value={Math.max(0, Math.min(100, Number(form.target) || 0))}
+                            suffix="%"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    {errors.target ? (
+                      <p className="text-xs text-destructive">{errors.target}</p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        Drag to set in steps of 10. Full marks when achievement ≥ target.
+                      </p>
+                    )}
+                  </>
+                )}
+                {form.uom === "TIMELINE" && (
+                  <>
+                    <Label htmlFor="target_date">Target deadline</Label>
+                    <Popover
+                      open={datePopoverOpen}
+                      onOpenChange={setDatePopoverOpen}
+                    >
+                      <PopoverTrigger asChild>
+                        <Button
+                          id="target_date"
+                          type="button"
+                          variant="outline"
+                          className={cn(
+                            "w-full justify-start text-left font-normal h-9 rounded-sm",
+                            !form.target_date && "text-muted-foreground",
+                            errors.target_date && errorGlowClass,
+                          )}
+                        >
+                          <CalendarIcon className="h-3.5 w-3.5 mr-2 opacity-70" />
+                          {form.target_date
+                            ? format(new Date(form.target_date), "PPP")
+                            : "Pick a date"}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent align="start" className="p-0">
+                        <Calendar
+                          mode="single"
+                          selected={
+                            form.target_date
+                              ? new Date(form.target_date)
+                              : undefined
+                          }
+                          onSelect={(d) => {
+                            if (!d) return;
+                            const iso = format(d, "yyyy-MM-dd");
+                            setForm({
+                              ...form,
+                              target_date: iso,
+                              target: iso,
+                            });
+                            clearError("target_date");
+                            setDatePopoverOpen(false);
+                          }}
+                          disabled={(date) => {
+                            const today = new Date();
+                            today.setHours(0, 0, 0, 0);
+                            return date < today;
+                          }}
+                          autoFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                    {errors.target_date ? (
+                      <p className="text-xs text-destructive">{errors.target_date}</p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        100% on/before deadline, else 0%. Past dates blocked.
+                      </p>
+                    )}
+                  </>
+                )}
+                {form.uom === "ZERO" && (
+                  <>
+                    <Label>Target (locked)</Label>
+                    <div
+                      className={cn(
+                        "relative flex items-center gap-3 rounded-md border border-destructive/40 bg-destructive/[0.07] px-3 py-2.5",
+                        "shadow-[0_0_18px_-10px_color-mix(in_oklch,var(--destructive)_55%,transparent)]",
+                      )}
+                    >
+                      <span className="relative flex h-2.5 w-2.5">
+                        <span className="absolute inline-flex h-full w-full rounded-full bg-destructive opacity-60 motion-safe:animate-ping" />
+                        <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-destructive" />
+                      </span>
+                      <div className="text-3xl font-semibold tabular-nums text-destructive leading-none">
+                        0
+                      </div>
+                      <div className="flex-1">
+                        <div className="text-[0.65rem] uppercase tracking-wider text-muted-foreground">
+                          Zero tolerance
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Locked at zero — any non-zero incident scores 0%.
+                        </div>
+                      </div>
+                      <Lock className="h-3.5 w-3.5 text-destructive/70" />
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Weightage — full-width slider on its own row */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="wt">Weightage (%)</Label>
+                <span className="text-xs text-muted-foreground">
+                  steps of 10 · minimum 10%
+                </span>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="flex-1 space-y-1.5">
+                  <Slider
+                    id="wt"
+                    value={[form.weightage]}
+                    min={10}
+                    max={100}
+                    step={10}
+                    onValueChange={(v) =>
+                      setForm({ ...form, weightage: v[0] ?? 10 })
+                    }
+                  />
+                  <div className="flex justify-between text-[0.6rem] text-muted-foreground tabular-nums px-1">
+                    {[10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((t) => (
+                      <span key={t}>{t}</span>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 rounded-md border border-border/60 bg-card/60 px-3 py-1.5 min-w-[110px] shrink-0">
+                  <AnimatedCircularProgress
+                    value={form.weightage}
+                    size={36}
+                    strokeWidth={4}
+                    showValue={false}
+                  />
+                  <div className="leading-tight">
+                    <div className="text-[0.6rem] uppercase tracking-wider text-muted-foreground">
+                      Share
+                    </div>
+                    <div className="text-sm font-semibold tabular-nums">
+                      <NumberTicker value={form.weightage} suffix="%" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </BlurFade>
+
+      <BlurFade delay={0.1}>
+        <Card
+          className={cn(
+            "rounded-md border-border/60 bg-card transition-shadow",
+            errors.recipients && errorGlowClass,
           )}
-        </CardContent>
-      </Card>
+        >
+          <CardHeader className="flex flex-row items-center justify-between gap-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              Recipients
+              <Badge
+                variant="outline"
+                className="rounded-full border-border/60 text-xs"
+              >
+                <NumberTicker value={selected.size} />
+                <span className="opacity-60 mx-0.5">/</span>
+                <NumberTicker value={employees.length} />
+              </Badge>
+            </CardTitle>
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-sm"
+              onClick={toggleAll}
+              disabled={loading || employees.length === 0}
+            >
+              {allSelected ? "Clear all" : "Select all"}
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <p className="text-sm text-muted-foreground">Loading recipients…</p>
+            ) : employees.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No employees or managers found.
+              </p>
+            ) : (
+              <TeamTree
+                admin={{
+                  name: currentUser?.full_name || currentUser?.email || "Admin",
+                  email: currentUser?.email || "",
+                  role: currentUser?.role || "ADMIN",
+                }}
+                tree={recipientTree}
+                selection={{ selected, onToggle: toggle }}
+              />
+            )}
+          </CardContent>
+        </Card>
+      </BlurFade>
 
       <div className="flex justify-end">
         <Button
           onClick={handlePushClick}
           disabled={pushing || selected.size === 0}
+          className="rounded-sm"
         >
           {pushing && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
           {pushing
             ? "Working…"
-            : `Push to ${selected.size} employee${selected.size === 1 ? "" : "s"}`}
+            : `Push to ${selected.size} recipient${selected.size === 1 ? "" : "s"}`}
         </Button>
       </div>
 
@@ -473,92 +904,273 @@ export default function SharedGoalsPage() {
           if (!pushing) setConfirmOpen(o);
         }}
       >
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-amber-600" />
-              Some recipients need their sheet reopened
+        <DialogContent
+          showCloseButton={false}
+          className="overflow-hidden rounded-md border border-border/60 bg-card/80 p-5 text-foreground shadow-2xl shadow-black/40 backdrop-blur-md sm:max-w-lg"
+        >
+          <DialogHeader className="items-center text-center">
+            <DialogTitle className="text-lg font-semibold tracking-tight">
+              Push this goal?
             </DialogTitle>
-            <DialogDescription>
-              The shared goal can't fit on the sheets below as-is. Reopening will set the sheet to
-              RETURNED, unlock all goals so the employee can rebalance, and notify them with a
-              remark. Manager will need to re-approve.
+            <DialogDescription className="text-sm text-muted-foreground">
+              This will land on {precheck.length}{" "}
+              {precheck.length === 1 ? "recipient's" : "recipients'"} cycle{" "}
+              {currentCycleYear} sheet
+              {precheck.length === 1 ? "" : "s"}.
             </DialogDescription>
           </DialogHeader>
 
-          {conflicts.length > 0 && (
-            <div className="space-y-2">
-              <div className="text-sm font-medium">
-                Will need reopen ({conflicts.length})
+          <div className="mt-2 space-y-3 max-h-[50vh] overflow-y-auto scrollbar-hide pr-1">
+            {/* ----------- Goal summary ----------- */}
+            <div className="rounded-md border border-border/60 bg-card/60 p-3 space-y-2.5">
+              <div className="text-[0.65rem] uppercase tracking-wider text-muted-foreground">
+                Goal to push
               </div>
-              <div className="border border-amber-300 bg-amber-50 dark:bg-amber-900/10">
-                {conflicts.map((r) => (
-                  <div
-                    key={r.employeeId}
-                    className="flex items-start justify-between gap-3 px-3 py-2 border-b border-amber-200 last:border-b-0 text-sm"
-                  >
-                    <div>
-                      <div className="font-medium">{r.name}</div>
-                      <div className="text-xs text-muted-foreground">{r.reason}</div>
-                    </div>
-                    <Badge
-                      variant="outline"
-                      className="bg-amber-100 text-amber-800 border-amber-300"
+              <div>
+                <div className="text-sm font-semibold leading-tight">
+                  {form.title || "Untitled goal"}
+                </div>
+                {form.description.trim() && (
+                  <div className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+                    {form.description}
+                  </div>
+                )}
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                <SummaryStat label="Thrust" value={form.thrust_area || "—"} />
+                <SummaryStat label="UoM" value={UOM_META[form.uom].label.split(" — ")[0]} />
+                <SummaryStat
+                  label="Target"
+                  value={
+                    form.uom === "TIMELINE"
+                      ? form.target_date
+                        ? format(new Date(form.target_date), "PP")
+                        : "—"
+                      : form.uom === "ZERO"
+                        ? "0 (locked)"
+                        : form.target || "—"
+                  }
+                />
+                <SummaryStat
+                  label="Weightage"
+                  value={`${form.weightage}%`}
+                />
+              </div>
+            </div>
+
+            {/* ----------- Recipient list ----------- */}
+            {precheck.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  Recipients
+                  <span className="opacity-70 ml-1">({precheck.length})</span>
+                </div>
+                <div className="rounded-md border border-border/60 overflow-hidden">
+                  {precheck.map((r, i) => (
+                    <div
+                      key={r.employeeId}
+                      className={cn(
+                        "flex items-center justify-between gap-3 px-3 py-2 text-sm",
+                        i !== precheck.length - 1 && "border-b border-border/60",
+                      )}
                     >
-                      {r.status ?? "—"}
-                    </Badge>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {clean.length > 0 && (
-            <div className="space-y-2">
-              <div className="text-sm font-medium">Will push cleanly ({clean.length})</div>
-              <div className="border border-border">
-                {clean.map((r) => (
-                  <div
-                    key={r.employeeId}
-                    className="flex items-start justify-between gap-3 px-3 py-2 border-b border-border last:border-b-0 text-sm"
-                  >
-                    <div>
-                      <div className="font-medium">{r.name}</div>
-                      <div className="text-xs text-muted-foreground">{r.reason}</div>
+                      <div className="font-medium truncate">{r.name}</div>
                     </div>
-                    <Badge variant="outline">{r.status ?? "NEW"}</Badge>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
-          <DialogFooter className="gap-2">
+          <DialogFooter className="mt-4 gap-2 sm:gap-2 sm:justify-center">
             <Button
-              variant="outline"
+              variant="ghost"
+              className="rounded-sm"
               disabled={pushing}
               onClick={() => setConfirmOpen(false)}
             >
               Cancel
             </Button>
             <Button
-              variant="outline"
-              disabled={pushing || clean.length === 0}
-              onClick={() => void executePush(precheck, false)}
-            >
-              {pushing && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
-              Skip conflicts · push to {clean.length}
-            </Button>
-            <Button
+              className="rounded-sm"
               disabled={pushing}
-              onClick={() => void executePush(precheck, true)}
+              onClick={() => void executePush(precheck)}
             >
               {pushing && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
-              Reopen &amp; push to {precheck.length}
+              Yes, push to {precheck.length}{" "}
+              {precheck.length === 1 ? "recipient" : "recipients"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* -------------------- Past shared goals dialog -------------------- */}
+      <Dialog open={pastOpen} onOpenChange={setPastOpen}>
+        <DialogContent className="sm:max-w-2xl rounded-md border-border/60 bg-card shadow-2xl shadow-black/40">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-semibold tracking-tight leading-tight">
+              Past shared goals
+            </DialogTitle>
+            <DialogDescription className="text-sm/relaxed">
+              Goals you've previously pushed to teammates' sheets.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 max-h-[65vh] overflow-y-auto scrollbar-hide pr-1">
+            {pastLoading ? (
+              <div className="flex items-center justify-center py-10 text-muted-foreground">
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                <span className="text-sm">Loading…</span>
+              </div>
+            ) : pastGoals.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-6 text-center">
+                No shared goals yet. Push one above to see it here.
+              </p>
+            ) : (
+              pastGoals.map((g) => (
+                <div
+                  key={g.key}
+                  className="rounded-md border border-border/60 bg-card p-3 space-y-2.5"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold leading-tight">
+                        {g.title}
+                      </div>
+                      {g.description && (
+                        <div className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+                          {g.description}
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-[0.65rem] text-muted-foreground tabular-nums shrink-0">
+                      {format(new Date(g.created_at), "PP")}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    <SummaryStat label="Thrust" value={g.thrust_area || "—"} />
+                    <SummaryStat
+                      label="UoM"
+                      value={UOM_META[g.uom].label.split(" — ")[0]}
+                    />
+                    <SummaryStat
+                      label="Target"
+                      value={
+                        g.uom === "TIMELINE"
+                          ? g.target_date
+                            ? format(new Date(g.target_date), "PP")
+                            : "—"
+                          : g.uom === "ZERO"
+                            ? "0 (locked)"
+                            : g.target || "—"
+                      }
+                    />
+                    <SummaryStat
+                      label="Weightage"
+                      value={`${g.weightage}%`}
+                    />
+                  </div>
+                  <div className="flex items-center gap-2 pt-1">
+                    <Badge
+                      variant="outline"
+                      className="rounded-full border-primary/40 bg-primary/10 text-primary text-[0.65rem]"
+                    >
+                      {g.recipientCount}{" "}
+                      {g.recipientCount === 1 ? "recipient" : "recipients"}
+                    </Badge>
+                    <div
+                      className="text-xs text-muted-foreground truncate"
+                      title={g.recipientNames.join(", ")}
+                    >
+                      {g.recipientNames.slice(0, 4).join(", ")}
+                      {g.recipientNames.length > 4 &&
+                        ` +${g.recipientNames.length - 4} more`}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              className="rounded-sm"
+              onClick={() => setPastOpen(false)}
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* -------------------- Outcome dialog (success / error) ------------- */}
+      <Dialog
+        open={!!result}
+        onOpenChange={(o) => {
+          if (!o) setResult(null);
+        }}
+      >
+        <DialogContent
+          showCloseButton={false}
+          className="overflow-hidden rounded-md border border-border/60 bg-card/80 p-5 text-foreground shadow-2xl shadow-black/40 backdrop-blur-md sm:max-w-md"
+        >
+          <DialogHeader className="items-center text-center">
+            <div className="mx-auto h-28 w-28">
+              {result && (
+                <DotLottieReact
+                  key={result.status}
+                  src={
+                    result.status === "success"
+                      ? "/success.lottie"
+                      : "/error.lottie"
+                  }
+                  autoplay
+                  loop={false}
+                />
+              )}
+            </div>
+            <DialogTitle className="text-lg font-semibold tracking-tight">
+              {result?.title}
+            </DialogTitle>
+            <DialogDescription className="text-sm text-muted-foreground">
+              {result?.message}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-4 gap-2 sm:gap-2 sm:justify-center">
+            <Button
+              className="rounded-sm"
+              variant={result?.status === "success" ? "default" : "outline"}
+              onClick={() => {
+                const wasSuccess = result?.status === "success";
+                setResult(null);
+                if (wasSuccess) {
+                  // AppShell's <main> is the scroll container — the window
+                  // itself doesn't scroll because of `h-screen overflow-hidden`.
+                  document
+                    .querySelector("main")
+                    ?.scrollTo({ top: 0, behavior: "smooth" });
+                }
+              }}
+            >
+              {result?.status === "success" ? "OK" : "Close"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function SummaryStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-border/60 bg-card/70 px-2.5 py-1.5">
+      <div className="text-[0.6rem] uppercase tracking-wider text-muted-foreground">
+        {label}
+      </div>
+      <div className="text-xs font-medium tabular-nums truncate" title={value}>
+        {value}
+      </div>
     </div>
   );
 }

@@ -11,7 +11,7 @@ if (!url || !key) {
 
 const REQUEST_TIMEOUT_MS = 15_000;
 
-function timeoutFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+export function timeoutFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const controller = new AbortController();
   if (init?.signal) {
     if (init.signal.aborted) controller.abort();

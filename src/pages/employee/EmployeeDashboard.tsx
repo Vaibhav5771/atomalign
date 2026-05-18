@@ -11,9 +11,9 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { MagicCard } from "@/components/ui/magicui/magic-card";
 import { NumberTicker } from "@/components/ui/magicui/number-ticker";
 import { AnimatedCircularProgress } from "@/components/ui/magicui/animated-circular-progress";
+import { StatCard } from "@/components/shared/StatCard";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 
 export default function EmployeeDashboard() {
@@ -117,11 +117,11 @@ export default function EmployeeDashboard() {
 
 function Stat({ label, value, suffix }: { label: string; value: number; suffix?: string }) {
   return (
-    <MagicCard className="p-3">
+    <StatCard className="p-3">
       <div className="text-xs text-muted-foreground uppercase tracking-wide">{label}</div>
       <div className="text-2xl font-semibold mt-1 font-mono">
         <NumberTicker value={value} suffix={suffix} />
       </div>
-    </MagicCard>
+    </StatCard>
   );
 }

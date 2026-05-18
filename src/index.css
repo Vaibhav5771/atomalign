@@ -93,3 +93,101 @@
     @apply font-mono;
   }
 }
+
+@layer utilities {
+  /* Invisible scrollbar — keeps scroll behaviour, hides the visual track.
+     Matches shadcn ScrollArea's understated feel without the extra dep. */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* react-day-picker — themed for the AtomAlign dark surface + primary accent.
+   Variables override the package defaults so the calendar inherits our look
+   without us re-implementing the layout. */
+.atomalign-calendar.rdp-root {
+  --rdp-accent-color: var(--primary);
+  --rdp-accent-background-color: color-mix(in oklch, var(--primary) 22%, transparent);
+  --rdp-today-color: var(--primary);
+  --rdp-day-width: 2.25rem;
+  --rdp-day-height: 2.25rem;
+  --rdp-day_button-width: 2rem;
+  --rdp-day_button-height: 2rem;
+  --rdp-day_button-border-radius: 0.375rem;
+  --rdp-weekday-padding: 0.25rem 0;
+  --rdp-nav_button-width: 1.75rem;
+  --rdp-nav_button-height: 1.75rem;
+  --rdp-nav-height: 2.25rem;
+  font-size: 0.8125rem;
+  color: var(--foreground);
+  padding: 0.25rem 0.5rem 0.5rem;
+}
+.atomalign-calendar .rdp-month_caption {
+  justify-content: center;
+  padding: 0 2.5rem;
+  height: var(--rdp-nav-height);
+}
+.atomalign-calendar .rdp-nav {
+  position: absolute;
+  top: 0.25rem;
+  left: 0.25rem;
+  right: 0.25rem;
+  height: var(--rdp-nav-height);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  pointer-events: none;
+}
+.atomalign-calendar .rdp-button_previous,
+.atomalign-calendar .rdp-button_next {
+  pointer-events: auto;
+}
+.atomalign-calendar .rdp-day_button {
+  color: var(--foreground);
+}
+.atomalign-calendar .rdp-day_button:hover:not([disabled]) {
+  background-color: color-mix(in oklch, var(--accent) 60%, transparent);
+}
+.atomalign-calendar .rdp-selected .rdp-day_button {
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+  border-color: transparent;
+  font-size: inherit;
+  font-weight: inherit;
+}
+.atomalign-calendar .rdp-selected .rdp-day_button:hover {
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+}
+.atomalign-calendar .rdp-today:not(.rdp-selected) .rdp-day_button {
+  color: var(--primary);
+  border: 1px solid color-mix(in oklch, var(--primary) 45%, transparent);
+}
+.atomalign-calendar .rdp-weekday {
+  color: var(--muted-foreground);
+  font-size: 0.65rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  font-weight: 500;
+}
+.atomalign-calendar .rdp-caption_label {
+  font-weight: 600;
+}
+.atomalign-calendar .rdp-button_previous,
+.atomalign-calendar .rdp-button_next {
+  color: var(--foreground);
+  border: 1px solid color-mix(in oklch, var(--border) 60%, transparent);
+  border-radius: 0.375rem;
+  background: var(--card);
+}
+.atomalign-calendar .rdp-button_previous:hover,
+.atomalign-calendar .rdp-button_next:hover {
+  background-color: var(--accent);
+}
+.atomalign-calendar .rdp-disabled .rdp-day_button {
+  color: color-mix(in oklch, var(--muted-foreground) 50%, transparent);
+}

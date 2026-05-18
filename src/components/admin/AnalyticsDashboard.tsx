@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Activity, PieChart as PieChartIcon, Trophy, Users } from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -31,6 +32,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { BlurFade } from "@/components/ui/magicui/blur-fade";
+import { StatCard } from "@/components/shared/StatCard";
+import { AnalyticsEmptyState } from "@/components/admin/AnalyticsEmptyState";
 import { cn, currentQuarter, QUARTERS } from "@/lib/utils";
 import type { AnalyticsRow, Quarter } from "@/types";
 
@@ -41,6 +45,30 @@ const PIE_COLORS = [
   "#2563eb", "#16a34a", "#d97706", "#dc2626",
   "#7c3aed", "#0891b2", "#be185d", "#65a30d",
 ];
+
+// Soft primary-tinted hover cursor that reads on the dark surface, instead of
+// recharts' default opaque light-grey block that swallows the bar.
+const TOOLTIP_CURSOR_FILL = {
+  fill: "color-mix(in oklch, var(--primary) 8%, transparent)",
+};
+
+// Dark-theme-aware tooltip content box so the popover stops rendering as a
+// stark white block on top of our card surface.
+const TOOLTIP_CONTENT_STYLE: React.CSSProperties = {
+  backgroundColor: "var(--card)",
+  border: "1px solid color-mix(in oklch, var(--border) 60%, transparent)",
+  borderRadius: 8,
+  color: "var(--foreground)",
+  fontSize: 12,
+  boxShadow: "0 10px 30px -10px rgb(0 0 0 / 0.45)",
+};
+const TOOLTIP_LABEL_STYLE: React.CSSProperties = {
+  color: "var(--foreground)",
+  fontWeight: 600,
+};
+const TOOLTIP_ITEM_STYLE: React.CSSProperties = {
+  color: "var(--muted-foreground)",
+};
 
 function scoreClass(score: number | null) {
   if (score == null) return "text-muted-foreground";
@@ -55,17 +83,9 @@ function rateClass(rate: number) {
   return "text-rose-600";
 }
 
-function EmptyChart({ label }: { label: string }) {
-  return (
-    <div className="flex items-center justify-center h-64 text-sm text-muted-foreground border border-dashed border-border rounded">
-      {label}
-    </div>
-  );
-}
-
 function ChartSkeleton() {
   return (
-    <div className="h-64 rounded bg-muted/40 animate-pulse" />
+    <div className="h-64 rounded-md bg-muted/40 animate-pulse" />
   );
 }
 
@@ -75,9 +95,13 @@ function ChartSkeleton() {
 function QoQTrendChart({
   rows,
   loading,
+  onRefresh,
+  refreshing,
 }: {
   rows: AnalyticsRow[];
   loading: boolean;
+  onRefresh?: () => void;
+  refreshing?: boolean;
 }) {
   const [mode, setMode] = useState<"org" | "dept">("org");
 
@@ -87,12 +111,16 @@ function QoQTrendChart({
     [rows],
   );
 
-  // Depts present in the data
+  // Depts present anywhere in the dataset — derived from the full `rows`
+  // (not just scored rows) so the Per-dept toggle becomes available the
+  // moment a workspace has any employee with a department, not only after
+  // someone records a check-in. The chart itself still only plots scored
+  // rows below, so empty-data cases fall through to the EmptyChart state.
   const departments = useMemo(() => {
     const set = new Set<string>();
-    for (const r of withScore) if (r.department) set.add(r.department);
+    for (const r of rows) if (r.department) set.add(r.department);
     return Array.from(set).sort();
-  }, [withScore]);
+  }, [rows]);
 
   // Aggregate per quarter
   const data = useMemo(() => {
@@ -126,7 +154,7 @@ function QoQTrendChart({
   const isEmpty = withScore.length === 0;
 
   return (
-    <Card>
+    <Card className="rounded-md border-border/60 bg-card">
       <CardHeader>
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
@@ -142,6 +170,7 @@ function QoQTrendChart({
               size="sm"
               variant={mode === "org" ? "default" : "outline"}
               onClick={() => setMode("org")}
+              className="rounded-sm"
             >
               Whole org
             </Button>
@@ -151,6 +180,7 @@ function QoQTrendChart({
               variant={mode === "dept" ? "default" : "outline"}
               onClick={() => setMode("dept")}
               disabled={departments.length === 0}
+              className="rounded-sm"
             >
               Per dept
             </Button>
@@ -161,7 +191,13 @@ function QoQTrendChart({
         {loading ? (
           <ChartSkeleton />
         ) : isEmpty ? (
-          <EmptyChart label="No data yet — no check-ins recorded across any quarter." />
+          <AnalyticsEmptyState
+            icon={Activity}
+            title="No quarterly trend data yet"
+            description="Trend lines populate once employees record check-ins on approved goal sheets."
+            onRefresh={onRefresh}
+            refreshing={refreshing}
+          />
         ) : (
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -174,7 +210,13 @@ function QoQTrendChart({
                   fontSize={12}
                   tickFormatter={(v) => `${v}%`}
                 />
-                <Tooltip formatter={(v) => `${v}%`} />
+                <Tooltip
+                  formatter={(v) => `${v}%`}
+                  cursor={TOOLTIP_CURSOR_FILL}
+                  contentStyle={TOOLTIP_CONTENT_STYLE}
+                  labelStyle={TOOLTIP_LABEL_STYLE}
+                  itemStyle={TOOLTIP_ITEM_STYLE}
+                />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
                 {lineKeys.map((key, i) => (
                   <Line
@@ -205,9 +247,13 @@ type DistTab = "thrust" | "uom" | "status";
 function GoalDistributionChart({
   rows,
   loading,
+  onRefresh,
+  refreshing,
 }: {
   rows: AnalyticsRow[];
   loading: boolean;
+  onRefresh?: () => void;
+  refreshing?: boolean;
 }) {
   const [tab, setTab] = useState<DistTab>("thrust");
 
@@ -256,7 +302,7 @@ function GoalDistributionChart({
   const isEmpty = data.length === 0;
 
   return (
-    <Card>
+    <Card className="rounded-md border-border/60 bg-card">
       <CardHeader>
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
@@ -273,6 +319,7 @@ function GoalDistributionChart({
                 size="sm"
                 variant={tab === t.id ? "default" : "outline"}
                 onClick={() => setTab(t.id)}
+                className="rounded-sm"
               >
                 {t.label}
               </Button>
@@ -284,7 +331,13 @@ function GoalDistributionChart({
         {loading ? (
           <ChartSkeleton />
         ) : isEmpty ? (
-          <EmptyChart label="No data yet — no goals match this view." />
+          <AnalyticsEmptyState
+            icon={PieChartIcon}
+            title="No goals to distribute yet"
+            description="Once admins or managers create goal sheets, distribution by thrust area, UoM, and status appears here."
+            onRefresh={onRefresh}
+            refreshing={refreshing}
+          />
         ) : (
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -313,6 +366,10 @@ function GoalDistributionChart({
                     const pct = (entry as { payload?: { pct: number } }).payload?.pct;
                     return pct != null ? `${v} (${pct}%)` : String(v);
                   }}
+                  cursor={TOOLTIP_CURSOR_FILL}
+                  contentStyle={TOOLTIP_CONTENT_STYLE}
+                  labelStyle={TOOLTIP_LABEL_STYLE}
+                  itemStyle={TOOLTIP_ITEM_STYLE}
                 />
               </PieChart>
             </ResponsiveContainer>
@@ -412,10 +469,14 @@ function TeamCompletionChart({
   managerStats,
   loading,
   focusQ,
+  onRefresh,
+  refreshing,
 }: {
   managerStats: ManagerStats[];
   loading: boolean;
   focusQ: Quarter;
+  onRefresh?: () => void;
+  refreshing?: boolean;
 }) {
   const isEmpty = managerStats.length === 0;
   const data = useMemo(
@@ -431,7 +492,7 @@ function TeamCompletionChart({
   };
 
   return (
-    <Card>
+    <Card className="rounded-md border-border/60 bg-card">
       <CardHeader>
         <CardTitle className="text-base">Team Completion Rate · {focusQ}</CardTitle>
         <CardDescription>
@@ -442,7 +503,13 @@ function TeamCompletionChart({
         {loading ? (
           <ChartSkeleton />
         ) : isEmpty ? (
-          <EmptyChart label="No data yet — no managers have direct reports with approved goals." />
+          <AnalyticsEmptyState
+            icon={Trophy}
+            title="No team completion data yet"
+            description="Completion bars appear once managers have direct reports with approved goal sheets for the current quarter."
+            onRefresh={onRefresh}
+            refreshing={refreshing}
+          />
         ) : (
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -466,8 +533,14 @@ function TeamCompletionChart({
                   fontSize={12}
                   width={80}
                 />
-                <Tooltip formatter={(v) => `${v}%`} />
-                <Bar dataKey="completion_rate" name="Completion %">
+                <Tooltip
+                  formatter={(v) => `${v}%`}
+                  cursor={TOOLTIP_CURSOR_FILL}
+                  contentStyle={TOOLTIP_CONTENT_STYLE}
+                  labelStyle={TOOLTIP_LABEL_STYLE}
+                  itemStyle={TOOLTIP_ITEM_STYLE}
+                />
+                <Bar dataKey="completion_rate" name="Completion %" minPointSize={3}>
                   {data.map((row, i) => (
                     <Cell key={i} fill={barColor(row.completion_rate)} />
                   ))}
@@ -487,9 +560,13 @@ function TeamCompletionChart({
 function ManagerEffectivenessTable({
   managerStats,
   loading,
+  onRefresh,
+  refreshing,
 }: {
   managerStats: ManagerStats[];
   loading: boolean;
+  onRefresh?: () => void;
+  refreshing?: boolean;
 }) {
   const sorted = useMemo(
     () =>
@@ -498,7 +575,7 @@ function ManagerEffectivenessTable({
   );
 
   return (
-    <Card>
+    <Card className="rounded-md border-border/60 bg-card">
       <CardHeader>
         <CardTitle className="text-base">Manager Effectiveness</CardTitle>
         <CardDescription>
@@ -510,9 +587,15 @@ function ManagerEffectivenessTable({
         {loading ? (
           <ChartSkeleton />
         ) : sorted.length === 0 ? (
-          <EmptyChart label="No data yet — no managers have direct reports." />
+          <AnalyticsEmptyState
+            icon={Users}
+            title="No managers tracked yet"
+            description="The manager effectiveness table fills in as soon as managers have direct reports with approved goal sheets."
+            onRefresh={onRefresh}
+            refreshing={refreshing}
+          />
         ) : (
-          <div className="rounded border border-border overflow-hidden">
+          <div className="rounded-md border border-border/60 bg-card overflow-hidden">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -562,9 +645,11 @@ function ManagerEffectivenessTable({
 interface Props {
   rows: AnalyticsRow[];
   loading: boolean;
+  onRefresh?: () => void;
+  refreshing?: boolean;
 }
 
-export function AnalyticsDashboard({ rows, loading }: Props) {
+export function AnalyticsDashboard({ rows, loading, onRefresh, refreshing }: Props) {
   const focusQ = currentQuarter();
   const managerStats = useMemo(() => buildManagerStats(rows, focusQ), [rows, focusQ]);
 
@@ -585,23 +670,50 @@ export function AnalyticsDashboard({ rows, loading }: Props) {
   }, [rows]);
 
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Stat label="Employees tracked" value={stats.employees} loading={loading} />
-        <Stat label="Goals total" value={stats.goals} loading={loading} />
-        <Stat label="Goals approved" value={stats.approvedGoals} loading={loading} />
-        <Stat label="Check-ins recorded" value={stats.checkIns} loading={loading} />
-      </div>
+    <div className="space-y-5">
+      <BlurFade delay={0.05}>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <Stat label="Employees tracked" value={stats.employees} loading={loading} />
+          <Stat label="Goals total" value={stats.goals} loading={loading} />
+          <Stat label="Goals approved" value={stats.approvedGoals} loading={loading} />
+          <Stat label="Check-ins recorded" value={stats.checkIns} loading={loading} />
+        </div>
+      </BlurFade>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <QoQTrendChart rows={rows} loading={loading} />
-        <GoalDistributionChart rows={rows} loading={loading} />
-        <TeamCompletionChart
-          managerStats={managerStats}
-          loading={loading}
-          focusQ={focusQ}
-        />
-        <ManagerEffectivenessTable managerStats={managerStats} loading={loading} />
+        <BlurFade delay={0.1}>
+          <QoQTrendChart
+            rows={rows}
+            loading={loading}
+            onRefresh={onRefresh}
+            refreshing={refreshing}
+          />
+        </BlurFade>
+        <BlurFade delay={0.15}>
+          <GoalDistributionChart
+            rows={rows}
+            loading={loading}
+            onRefresh={onRefresh}
+            refreshing={refreshing}
+          />
+        </BlurFade>
+        <BlurFade delay={0.2}>
+          <TeamCompletionChart
+            managerStats={managerStats}
+            loading={loading}
+            focusQ={focusQ}
+            onRefresh={onRefresh}
+            refreshing={refreshing}
+          />
+        </BlurFade>
+        <BlurFade delay={0.25}>
+          <ManagerEffectivenessTable
+            managerStats={managerStats}
+            loading={loading}
+            onRefresh={onRefresh}
+            refreshing={refreshing}
+          />
+        </BlurFade>
       </div>
 
       <p className="text-xs text-muted-foreground">
@@ -623,11 +735,11 @@ function Stat({
   loading: boolean;
 }) {
   return (
-    <div className="border border-border p-3">
+    <StatCard className="p-3">
       <div className="text-xs text-muted-foreground uppercase tracking-wide">{label}</div>
       <div className="text-xl font-semibold mt-1 font-mono tabular-nums">
         {loading ? "—" : value}
       </div>
-    </div>
+    </StatCard>
   );
 }
