@@ -164,7 +164,7 @@ export default function LoginPage() {
               <CardTitle className="text-2xl leading-tight">
                 <WordFadeIn text="AtomAlign" className="font-spock font-bold" />
               </CardTitle>
-              <CardDescription>Goal Setting & Tracking</CardDescription>
+              <CardDescription className="-mt-1.5">Goal Setting & Tracking</CardDescription>
             </div>
           </div>
         </CardHeader>
