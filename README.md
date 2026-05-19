@@ -4,6 +4,7 @@ In-house portal for company-wide quarterly goal setting, manager approval, achie
 
 **Live demo:** https://atomalignv.netlify.app
 **Submission document:** [`docs/SUBMISSION.pdf`](./docs/SUBMISSION.pdf) (single file containing the working link, repo, and architecture diagram)
+**Onboarding + email walkthrough:** [`docs/ONBOARDING.md`](./docs/ONBOARDING.md) — step-by-step wizard flow + what emails fire when + how to configure SMTP for a fork
 **Architecture diagram:** [`context/architecture.png`](./context/architecture.png)
 **Demo credentials walkthrough:** [`context/demo-credentials.md`](./context/demo-credentials.md)
 **Master status doc:** [`context/progress-tracker.md`](./context/progress-tracker.md)
@@ -27,6 +28,8 @@ There is **one** pre-seeded login. Manager and Employee accounts are created by 
 5. **Step 3** — copy the credentials table. Sign in as any of those users to walk the Employee / Manager / Admin journeys.
 
 **Use real email addresses in the wizard.** Welcome emails, goal-event notifications (submitted / approved / returned / check-in saved), and escalation reminders all fire to those addresses via Gmail SMTP through a Supabase Edge Function. Emails may land in Spam — that's expected for a hackathon SMTP relay.
+
+> **Want the full step-by-step?** See [`docs/ONBOARDING.md`](./docs/ONBOARDING.md) — every wizard field explained, every email event listed (who gets what, when), and a complete SMTP setup guide for forkers.
 
 ### 5-minute happy-path
 
