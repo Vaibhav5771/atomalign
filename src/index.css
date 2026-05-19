@@ -1,17 +1,127 @@
 @import "tw-animate-css";
-@import "@fontsource-variable/inter";
-@import "@fontsource-variable/jetbrains-mono";
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
+@import "@fontsource-variable/roboto";
+@import "@fontsource-variable/montserrat";
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* Founders Grotesk — licensed (Klim Type Foundry), self-hosted from /public/fonts. */
+@font-face {
+  font-family: 'Founders Grotesk';
+  src: url('/fonts/FoundersGrotesk-Light.otf') format('opentype');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Founders Grotesk';
+  src: url('/fonts/FoundersGrotesk-LightItalic.otf') format('opentype');
+  font-weight: 300;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Founders Grotesk';
+  src: url('/fonts/FoundersGrotesk-Regular.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Founders Grotesk';
+  src: url('/fonts/FoundersGrotesk-RegularItalic.otf') format('opentype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Founders Grotesk';
+  src: url('/fonts/FoundersGrotesk-Medium.otf') format('opentype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Founders Grotesk';
+  src: url('/fonts/FoundersGrotesk-MediumItalic.otf') format('opentype');
+  font-weight: 500;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Founders Grotesk';
+  src: url('/fonts/FoundersGrotesk-Semibold.otf') format('opentype');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Founders Grotesk';
+  src: url('/fonts/FoundersGrotesk-SemiboldItalic.otf') format('opentype');
+  font-weight: 600;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Founders Grotesk';
+  src: url('/fonts/FoundersGrotesk-Bold.otf') format('opentype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Founders Grotesk';
+  src: url('/fonts/FoundersGrotesk-BoldItalic.otf') format('opentype');
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Founders Grotesk Cond';
+  src: url('/fonts/FoundersGroteskCond-Lt.otf') format('opentype');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Founders Grotesk XCond';
+  src: url('/fonts/FoundersGroteskXCond-Lt.otf') format('opentype');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Founders Grotesk XCond';
+  src: url('/fonts/FoundersGroteskXCond-Bold.otf') format('opentype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Spock ESS — licensed (Los Andes / Elsner+Flake), self-hosted. Only Bold supplied. */
+@font-face {
+  font-family: 'Spock ESS';
+  src: url('/fonts/LosAndesSpockEssBold.otf') format('opentype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 @layer base {
-  .theme {
-    --font-heading: var(--font-mono);
-    --font-sans: 'Inter Variable', sans-serif;
-    --font-mono: 'JetBrains Mono Variable', monospace;
-  }
   :root {
+    --font-geist-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+    --font-geist-mono: 'Geist Mono Variable', ui-monospace, SFMono-Regular, monospace;
+    --font-roboto: 'Roboto Variable', ui-sans-serif, system-ui, sans-serif;
+    --font-montserrat: 'Montserrat Variable', ui-sans-serif, system-ui, sans-serif;
+    --font-founders-grotesk: 'Founders Grotesk', ui-sans-serif, system-ui, sans-serif;
+    --font-founders-cond: 'Founders Grotesk Cond', 'Founders Grotesk', ui-sans-serif, sans-serif;
+    --font-founders-xcond: 'Founders Grotesk XCond', 'Founders Grotesk', ui-sans-serif, sans-serif;
+    --font-spock-ess: 'Spock ESS', Georgia, serif;
+    --font-sans: var(--font-geist-sans);
+    --font-mono: var(--font-geist-mono);
+    --font-heading: var(--font-founders-grotesk);
     --background: oklch(1 0 0);
     --foreground: oklch(0.145 0 0);
     --card: oklch(1 0 0);
@@ -87,10 +197,14 @@
     outline-color: color-mix(in oklch, var(--ring) 50%, transparent);
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-geist;
   }
-  html {
-    @apply font-mono;
+  h1 {
+    font-family: var(--font-spock-ess);
+    font-weight: 700;
+  }
+  h2, h3, h4, h5, h6 {
+    font-family: var(--font-founders-grotesk);
   }
 }
 

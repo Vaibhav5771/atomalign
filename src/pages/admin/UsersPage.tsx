@@ -2,8 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Loader2, Pencil, Trash2, UserPlus2 } from "lucide-react";
-import { CaretDownIcon } from "@phosphor-icons/react";
+import { ChevronDown, Loader2, Pencil, Trash2, UserPlus2 } from "lucide-react";
 import { DotLottieReact } from "@lottiefiles/dotlottie-react";
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/authStore";
@@ -385,7 +384,7 @@ export default function UsersPage() {
                         aria-label="Pick from existing departments"
                         className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground outline-none focus-visible:text-foreground"
                       >
-                        <CaretDownIcon className="size-4" />
+                        <ChevronDown className="size-4" />
                       </DropdownMenuTrigger>
                       <DropdownMenuContent
                         align="end"
@@ -944,7 +943,7 @@ function EditUserDialog({
                         aria-label="Pick role"
                         className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground outline-none focus-visible:text-foreground"
                       >
-                        <CaretDownIcon className="size-4" />
+                        <ChevronDown className="size-4" />
                       </DropdownMenuTrigger>
                       <DropdownMenuContent
                         align="end"
@@ -1038,7 +1037,7 @@ function EditUserDialog({
                         aria-label="Pick from existing departments"
                         className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground outline-none focus-visible:text-foreground"
                       >
-                        <CaretDownIcon className="size-4" />
+                        <ChevronDown className="size-4" />
                       </DropdownMenuTrigger>
                       <DropdownMenuContent
                         align="end"

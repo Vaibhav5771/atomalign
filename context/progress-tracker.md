@@ -1,6 +1,6 @@
 # AtomAlign — Master Progress Tracker
 
-**Last updated:** 2026-05-19 (round 7 — admin polish J–Q + Section R: full employee-surface polish + Section S: full manager-surface polish — ManagerDashboard / ReviewGoalSheet (Approve+Return both with confirm + Lottie outcome) / ManagerCheckIns (page-level outcome Lottie + "no employees available" disabled dropdown) plus shared TeamTable / ReviewPanel / ManagerCheckInView re-skinned to design tokens; `useToast` removed end-to-end on manager flows)
+**Last updated:** 2026-05-19 (round 7 — admin polish J–Q + Section R: full employee-surface polish + Section S: full manager-surface polish + Section T: global typography pass — Spock ESS for h1 + AtomAlign brand, Founders Grotesk for h2–h6, Geist Sans for body, Geist Mono for `font-mono`; Inter + JetBrains Mono removed)
 **Overall completion:** ~99.97% on hackathon scope (see round-6 line). Round-7 is post-submission polish — locking in a coherent design language (glassmorphism + soft-yellow accent + Magic UI motion) starting from login and propagating through sidebar, AppShell, dashboards, dialogs. Iterative, flow-by-flow.
 
 > **New chat? Read [Round-7 design language](#round-7-design-language-overhaul-2026-05-19--in-progress) first** — it lists the locked-in tokens (rounding scale, surfaces, focus ring, motion vocabulary, shared components) so you can match the style without re-deriving it.
@@ -231,6 +231,7 @@ Goal: with the hackathon submission landed, lock in a coherent visual identity a
 - [x] **Shared-goal delete flow** — done (see section Q below)
 - [x] **Employee surfaces — Dashboard / GoalSheet view / NewGoalSheet (Add+Edit+Delete+Submit) / CheckIns** — done (see section R below)
 - [x] **Manager surfaces — Dashboard / Review (Approve+Return) / Team check-ins** — done (see section S below). Includes "no employees available" dropdown handling on Team check-ins per user direction
+- [x] **Typography pass — global font hierarchy** — done (see section T below). Spock ESS for h1 + AtomAlign brand, Founders Grotesk for h2–h6, Geist Sans for body, Geist Mono for the `font-mono` utility
 
 ### J. Create Team wizard (`CreateTeamWizard.tsx`) — full polish pass
 
@@ -764,6 +765,62 @@ Scope: every page reachable while logged in as a manager — `/manager/dashboard
 - A weightage-mismatch *inline* indicator in the ReviewPanel total row (e.g. a red glow on the total chip when ≠ 100%, scrolling into view on Approve click). Currently the validation routes through the outcome Lottie, which is consistent with the rest of the app but means the manager has to dismiss a dialog before they can see what's wrong. If managers complain, swap to inline red-glow + auto-scroll
 - An "Approved" / "Returned" history pill on `TeamTable` rows alongside the StatusBadge. Useful at a glance for the manager dashboard, but the existing StatusBadge already conveys this with a slight color difference. Defer
 - Hoisting the shared `OutcomeDialog` (now duplicated across ~5+ pages: SharedGoalsPage, UsersPage, ReportsPage, EscalationsPage, NewGoalSheetPage, CheckInsPage, ReviewGoalSheet, ManagerCheckInsPage) into `src/components/shared/OutcomeDialog.tsx`. With 8 callsites now, the case is stronger than it was at the end of Section R. Not done yet because each callsite has subtle per-page behavior (scroll-to-top vs navigate-away vs simple close), and lifting that into props is a separate refactor. Worth a dedicated polish PR once admin and manager sides settle
+
+### T. Typography pass — global font hierarchy (2026-05-19)
+
+Goal: replace the silent "browser-default monospace" fallback (the existing `html { @apply font-mono }` resolved to `var(--font-mono)` which was scoped under `.theme`, a class the HTML never sets — so every page was rendering in OS-default mono) with a coherent, brand-aligned typography hierarchy. Per user direction: Spock for the brand heading, Founders for subheadings, "something else" for body that matches the style.
+
+**Hierarchy locked in:**
+- `h1` → **Spock ESS Bold** — display weight, page titles. Spock has only Bold (700) supplied; the global rule pins `font-weight: 700` so any Tailwind weight class collapses to the available file
+- `h2`, `h3`, `h4`, `h5`, `h6` → **Founders Grotesk** — section heads, card titles, dialog titles. All 10 weights/italics available
+- `body` (default) → **Geist Sans** — chosen over Roboto (too "Material") and Montserrat (geometric, fights Founders). Geist is a clean modern grotesk that pairs well with both Spock and Founders
+- `font-mono` utility (33 existing callsites across 14 files — code-like indicators, status pills) → **Geist Mono** — via `--font-mono` redirect. Previously rendered as OS-default mono
+- "AtomAlign" brand text → **Spock ESS Bold** (3 spots: [LoginPage.tsx:101](src/pages/auth/LoginPage.tsx#L101) hero, [LoginPage.tsx:165](src/pages/auth/LoginPage.tsx#L165) card title via `WordFadeIn`, [Sidebar.tsx:126](src/components/layout/Sidebar.tsx#L126)) — applied manually via `className="font-spock font-bold"` even though h1 is already Spock, because the brand instances sit inside spans, not h1 elements
+
+**Font sources:**
+- Free (Fontsource variable): `@fontsource-variable/geist`, `@fontsource-variable/geist-mono`, `@fontsource-variable/roboto`, `@fontsource-variable/montserrat` — installed via npm. Roboto + Montserrat are wired up as Tailwind utilities (`font-roboto`, `font-montserrat`) for opt-in usage but not applied anywhere yet
+- Licensed local (Klim Type Foundry — Founders): 10 `.otf` files in [public/fonts/](public/fonts/) covering Regular/Italic across Light/Regular/Medium/Semibold/Bold, plus Condensed Light + XCondensed Light/Bold. Wired up via `@font-face` rules in [src/index.css](src/index.css)
+- Licensed local (Los Andes / Elsner+Flake — Spock ESS): `LosAndesSpockEssBold.otf` only — Bold weight only
+
+**CSS vars exposed at `:root`** (in [src/index.css](src/index.css)):
+- `--font-geist-sans`, `--font-geist-mono`, `--font-roboto`, `--font-montserrat` — Fontsource families
+- `--font-founders-grotesk`, `--font-founders-cond`, `--font-founders-xcond` — local Founders families
+- `--font-spock-ess` — local Spock family
+- `--font-sans` redirected to `var(--font-geist-sans)`, `--font-mono` to `var(--font-geist-mono)`, `--font-heading` to `var(--font-founders-grotesk)` (so the existing Tailwind `font-sans` / `font-mono` / `font-heading` utilities pick up the new families without callsite changes)
+
+**Tailwind utilities added** ([tailwind.config.js:64-75](tailwind.config.js#L64-L75)):
+- `font-geist`, `font-geist-mono`, `font-roboto`, `font-montserrat`, `font-founders`, `font-founders-cond`, `font-founders-xcond`, `font-spock`
+
+**Files changed:**
+- [src/index.css](src/index.css) — dropped Inter + JetBrains imports; added 4 Fontsource imports + 14 `@font-face` rules; defined 8 new font vars in `:root`; rerouted `--font-sans` / `--font-mono` / `--font-heading`; body → `font-geist`; h1 → Spock; h2–h6 → Founders. The stale `.theme` block was also dropped (it was never applied anywhere, so the existing `--font-sans`/`--font-mono` definitions were dead code)
+- [tailwind.config.js](tailwind.config.js) — 8 new `fontFamily` entries
+- [src/pages/auth/LoginPage.tsx](src/pages/auth/LoginPage.tsx) — brand text x2 → `font-spock font-bold`
+- [src/components/layout/Sidebar.tsx](src/components/layout/Sidebar.tsx) — sidebar brand → `font-spock font-bold`
+- [package.json](package.json) — added Geist/Geist Mono/Roboto/Montserrat; removed Inter/JetBrains
+
+**Verification:**
+- [x] `npx tsc -b` — clean (no type changes; CSS not type-checked)
+- [x] `grep` confirms no existing component uses the new `font-roboto|montserrat|geist|founders|spock` class names — first applications are this PR's, no collisions
+- [x] Vite step still blocked on pre-existing Node 18 `CustomEvent is not defined` (env constraint memory) — not run
+
+**Page coverage** (since the hierarchy is set via element selectors and `body`, every page picks it up automatically):
+- All admin pages (Dashboard, Users, Reports, Analytics, Escalations, SharedGoals) — h1s become Spock, h2/h3 section heads become Founders, body becomes Geist
+- All employee pages (Dashboard, GoalSheet, NewGoalSheet, CheckIns) — same
+- All manager pages (Dashboard, ReviewGoalSheet, ManagerCheckIns) — same
+- Auth: LoginPage h1 ("Align goals at the speed of execution") becomes Spock; "AtomAlign" brand spans (hero + card title) stay Spock explicitly
+- Layout: Sidebar AtomAlign branding stays Spock explicitly; nav items inherit body Geist
+
+**Gotchas worth knowing:**
+- Spock is loud at large sizes. The LoginPage hero h1 reads particularly heavy now — if it overpowers the design, the surgical fix is `className="font-founders"` on that one element to override the global rule
+- Spock has Bold-only. Any `<h1 className="font-normal">` will still render as Bold (the browser maps every weight request to the only available file). Get more Spock weights or override the family at the callsite if a non-bold display heading is needed
+- Founders Grotesk files are `.otf`. Browsers handle this fine, but `.woff2` would be ~50% smaller — flagged as a perf follow-up in `current-issues.md` LCP issue
+- Net asset payload **grew** vs. the previous Inter + JetBrains setup (4 Fontsource families + 11 local OTFs vs. 2 Fontsource families). The LCP issue note in `current-issues.md` has been updated to reflect this
+
+**Considered + deferred for the typography pass:**
+- Converting Founders/Spock `.otf` → `.woff2` subset. Real impact on LCP (login already at 5.5 s). Deferred to PR1.5 perf pass per the existing issue tracker
+- Applying Roboto or Montserrat anywhere. Wired as utilities but no callsite uses them — kept available for marketing-style surfaces (e.g. future landing page) without committing them now
+- Uninstalling Inter + JetBrains Mono. Done — they were unreferenced after the redirect, so `npm uninstall` was a clean cleanup
+- Overriding LoginPage hero h1 to Founders if Spock is too heavy at `text-4xl`. Left as Spock for now; will visual-check on dev server next
 
 ### Pending migrations to the "no opacity on dialogs" rule
 

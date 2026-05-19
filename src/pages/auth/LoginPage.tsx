@@ -98,7 +98,7 @@ export default function LoginPage() {
 
         <div className="relative z-10 flex items-center gap-4">
           <img src={logoUrl} alt="" aria-hidden="true" className="h-20 w-20" />
-          <span className="text-4xl font-semibold tracking-tight">AtomAlign</span>
+          <span className="font-spock text-4xl font-bold tracking-tight">AtomAlign</span>
         </div>
 
         <div className="relative z-10 mt-10 flex flex-col gap-8 pb-8">
@@ -162,7 +162,7 @@ export default function LoginPage() {
             <img src={logoUrl} alt="" aria-hidden="true" className="h-12 w-12 shrink-0" />
             <div className="flex flex-col">
               <CardTitle className="text-2xl leading-tight">
-                <WordFadeIn text="AtomAlign" />
+                <WordFadeIn text="AtomAlign" className="font-spock font-bold" />
               </CardTitle>
               <CardDescription>Goal Setting & Tracking</CardDescription>
             </div>

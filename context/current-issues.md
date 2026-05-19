@@ -7,9 +7,14 @@ Tracker for in-flight UI work. Issues at the top, verified-pass items at the bot
 ## Open Issues
 
 ### LCP performance — login page (5.55s, poor)
-- **Symptom**: Local LCP measured at 5.55 s. INP 8 ms (good), CLS 0 (good).
-- **Likely cause**: blocking webfont load (`@fontsource-variable/inter` + `@fontsource-variable/jetbrains-mono` import their full CSS + woff2 files into the entry chunk). Combined with the 1.6 MB single JS bundle, the meteors/border-beam paint can't start until everything resolves.
-- **Plan**: (a) preload the latin-only subset for Inter via `<link rel="preload">`; (b) drop fontsource's full-language CSS in favor of latin + latin-ext only; (c) lazy-route the authenticated routes via `React.lazy` so `/login` ships its own small chunk; (d) move Meteors render behind an `IntersectionObserver`/`requestIdleCallback` so it doesn't compete with LCP.
+- **Symptom**: Local LCP measured at 5.55 s. INP 8 ms (good), CLS 0 (good). Last measured before the round-7 typography pass; expected to be *worse* now (see below).
+- **Cause (current — post round-7 typography pass)**: webfont payload grew. The entry CSS now imports 4 Fontsource variable families (`geist`, `geist-mono`, `roboto`, `montserrat`) and declares 14 `@font-face` rules pointing at local `.otf` files for Founders Grotesk (10 weights/styles incl. 2 condensed variants) + Spock ESS Bold. Combined with the 1.6 MB single JS bundle, the meteors/border-beam paint still can't start until everything resolves.
+- **Plan**:
+  - (a) Drop the `.otf` files in favor of subset `.woff2` (≈50% size reduction). Only ship the weights actually used — initial audit: Founders Regular/Medium/Semibold/Bold + Spock Bold cover the existing pages; Light/Italic/Condensed/XCondensed variants can be deferred until a callsite needs them.
+  - (b) Drop fontsource's full-language CSS in favor of latin + latin-ext only for all four variable families.
+  - (c) Preload the LCP-critical fonts via `<link rel="preload" as="font" type="font/woff2" crossorigin>` (Spock Bold + Founders Bold for headings, Geist 400 for body).
+  - (d) Lazy-route the authenticated routes via `React.lazy` so `/login` ships its own small chunk.
+  - (e) Move Meteors render behind an `IntersectionObserver`/`requestIdleCallback` so it doesn't compete with LCP.
 - **Owner**: PR1.5 (perf pass — separate small PR before PR2 dashboards merge).
 
 ---
