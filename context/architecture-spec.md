@@ -25,11 +25,11 @@ Use this as a script to draw the diagram in Excalidraw (excalidraw.com — no si
                     [HTTPS — Browser]
 ```
 
-### Layer 2 — Frontend (single big box, hosted on Vercel)
+### Layer 2 — Frontend (single big box, hosted on Netlify)
 
 ```
 ┌───────────────────────────────────────────────────────────────┐
-│  🌐 Vercel — Static Hosting (CDN-edge)                        │
+│  🌐 Netlify — Static Hosting (CDN-edge)                       │
 │  ───────────────────────────────────────────────────────────  │
 │                                                               │
 │   React 19  +  Vite 8  +  TypeScript                          │
@@ -67,6 +67,7 @@ Use this as a script to draw the diagram in Excalidraw (excalidraw.com — no si
 │                     │   shared_goals                      │   │
 │                     │   check_ins                         │   │
 │                     │   audit_logs                        │   │
+│                     │   escalation_rules · escalations    │   │
 │                     │                                     │   │
 │                     │ Triggers:                           │   │
 │                     │   handle_new_user                   │   │
@@ -77,9 +78,18 @@ Use this as a script to draw the diagram in Excalidraw (excalidraw.com — no si
 │                     │ RPCs:                               │   │
 │                     │   admin_delete_user (SECURITY       │   │
 │                     │     DEFINER)                        │   │
+│                     │   update_admin · set_my_email_      │   │
+│                     │     immediate                       │   │
+│                     │   get_completion_report             │   │
 │                     │                                     │   │
 │                     │ View:                               │   │
 │                     │   analytics_summary                 │   │
+│                     │                                     │   │
+│                     │ Edge Functions (Deno):              │   │
+│                     │   notify — Gmail SMTP +             │   │
+│                     │     Teams webhook                   │   │
+│                     │   evaluate-escalations — daily      │   │
+│                     │     pg_cron, fires notify per match │   │
 │                     │                                     │   │
 │                     │ ── Row Level Security on every      │   │
 │                     │    table (auth.uid() + role check)  │   │
@@ -123,7 +133,7 @@ Use this as a script to draw the diagram in Excalidraw (excalidraw.com — no si
 ## Key things the diagram should communicate
 
 - **Three distinct user roles** with clearly different responsibilities
-- **No custom backend** — Vercel only hosts static files; all logic is in Postgres
+- **No custom backend** — Netlify only hosts static files; all logic is in Postgres + Supabase Edge Functions
 - **RLS is the security boundary**, not application code
-- **Free-tier stack** — single Supabase project + Vercel free hosting, ~$0 infra cost (relevant to evaluation criterion #6 cost optimisation)
-- **Vite static build** → CDN-edge delivery via Vercel = fast page loads
+- **Free-tier stack** — single Supabase project + Netlify free hosting, ~$0 infra cost (relevant to evaluation criterion #6 cost optimisation)
+- **Vite static build** → CDN-edge delivery via Netlify = fast page loads
