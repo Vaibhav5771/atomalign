@@ -122,10 +122,10 @@ export function Sidebar() {
               />
               {!collapsed && (
                 <div className="flex min-w-0 flex-col">
-                  <span className="truncate font-spock text-sm font-bold leading-none">
+                  <span className="truncate font-spock text-sm font-bold leading-tight">
                     AtomAlign
                   </span>
-                  <span className="mt-1 truncate text-[10px] text-muted-foreground">
+                  <span className="truncate text-[10px] text-muted-foreground">
                     Goal Setting & Tracking
                   </span>
                 </div>

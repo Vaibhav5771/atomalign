@@ -110,7 +110,7 @@ export default function LoginPage() {
           </BlurFade>
 
           <BlurFade delay={0.1}>
-            <h1 className="font-founders text-4xl font-semibold leading-tight tracking-tight">
+            <h1 className="text-4xl font-semibold leading-tight tracking-tight">
               Align goals at the
               <br /> speed of execution.
             </h1>
@@ -161,10 +161,10 @@ export default function LoginPage() {
           <div className="flex items-center gap-3">
             <img src={logoUrl} alt="" aria-hidden="true" className="h-12 w-12 shrink-0" />
             <div className="flex flex-col">
-              <CardTitle className="text-2xl leading-none">
+              <CardTitle className="text-2xl leading-tight">
                 <WordFadeIn text="AtomAlign" className="font-spock font-bold" />
               </CardTitle>
-              <CardDescription className="mt-1.5">Goal Setting & Tracking</CardDescription>
+              <CardDescription>Goal Setting & Tracking</CardDescription>
             </div>
           </div>
         </CardHeader>
