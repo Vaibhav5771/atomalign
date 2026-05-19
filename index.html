@@ -1,10 +1,29 @@
 <!doctype html>
-<html lang="en" class="dark" style="color-scheme: dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AtomAlign</title>
+    <script>
+      // Apply persisted theme before paint to avoid flash. Keep in sync with src/stores/themeStore.ts.
+      (function () {
+        try {
+          var theme = 'dark';
+          var raw = localStorage.getItem('atomalign-theme');
+          if (raw) {
+            var parsed = JSON.parse(raw);
+            if (parsed && parsed.state && parsed.state.theme) theme = parsed.state.theme;
+          }
+          var resolved = theme === 'system'
+            ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+            : theme;
+          var root = document.documentElement;
+          if (resolved === 'dark') root.classList.add('dark');
+          root.style.colorScheme = resolved;
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -14,6 +14,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { Meteors } from "@/components/ui/magicui/meteors";
 import { ShimmerButton } from "@/components/ui/magicui/shimmer-button";
 import { WordFadeIn } from "@/components/ui/magicui/word-fade-in";
@@ -83,6 +84,9 @@ export default function LoginPage() {
 
   return (
     <div className="relative min-h-screen w-full bg-background lg:grid lg:grid-cols-[3fr_2fr]">
+      <div className="absolute right-4 top-4 z-30">
+        <ThemeToggle />
+      </div>
       <aside className="relative hidden overflow-hidden border-r border-border bg-card/40 lg:flex lg:flex-col lg:p-10">
         <Meteors number={18} />
 
