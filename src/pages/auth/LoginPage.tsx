@@ -110,7 +110,7 @@ export default function LoginPage() {
           </BlurFade>
 
           <BlurFade delay={0.1}>
-            <h1 className="text-4xl font-semibold leading-tight tracking-tight">
+            <h1 className="font-founders text-4xl font-semibold leading-tight tracking-tight">
               Align goals at the
               <br /> speed of execution.
             </h1>
