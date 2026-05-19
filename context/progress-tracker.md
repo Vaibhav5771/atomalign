@@ -1,6 +1,6 @@
 # AtomAlign — Master Progress Tracker
 
-**Last updated:** 2026-05-19 (round 7 — admin polish J–Q + Section R: full employee-surface polish + Section S: full manager-surface polish + Section T: global typography pass — Spock ESS for h1 + AtomAlign brand, Founders Grotesk for h2–h6, Geist Sans for body, Geist Mono for `font-mono`; Inter + JetBrains Mono removed)
+**Last updated:** 2026-05-19 PM (round 7 — admin polish J–Q + Section R: full employee-surface polish + Section S: full manager-surface polish + Section T: global typography pass — Spock ESS for h1 + AtomAlign brand, Founders Grotesk for h2–h6, Geist Sans for body, Geist Mono for `font-mono`; Inter + JetBrains Mono removed + Section U: icon sweep Phosphor + react-icons → Lucide)
 **Overall completion:** ~99.97% on hackathon scope (see round-6 line). Round-7 is post-submission polish — locking in a coherent design language (glassmorphism + soft-yellow accent + Magic UI motion) starting from login and propagating through sidebar, AppShell, dashboards, dialogs. Iterative, flow-by-flow.
 
 > **New chat? Read [Round-7 design language](#round-7-design-language-overhaul-2026-05-19--in-progress) first** — it lists the locked-in tokens (rounding scale, surfaces, focus ring, motion vocabulary, shared components) so you can match the style without re-deriving it.
@@ -232,6 +232,7 @@ Goal: with the hackathon submission landed, lock in a coherent visual identity a
 - [x] **Employee surfaces — Dashboard / GoalSheet view / NewGoalSheet (Add+Edit+Delete+Submit) / CheckIns** — done (see section R below)
 - [x] **Manager surfaces — Dashboard / Review (Approve+Return) / Team check-ins** — done (see section S below). Includes "no employees available" dropdown handling on Team check-ins per user direction
 - [x] **Typography pass — global font hierarchy** — done (see section T below). Spock ESS for h1 + AtomAlign brand, Founders Grotesk for h2–h6, Geist Sans for body, Geist Mono for the `font-mono` utility
+- [x] **Icon sweep — Phosphor + react-icons → Lucide** — done (see section U below). Single icon library across the app
 
 ### J. Create Team wizard (`CreateTeamWizard.tsx`) — full polish pass
 
@@ -820,7 +821,35 @@ Goal: replace the silent "browser-default monospace" fallback (the existing `htm
 - Converting Founders/Spock `.otf` → `.woff2` subset. Real impact on LCP (login already at 5.5 s). Deferred to PR1.5 perf pass per the existing issue tracker
 - Applying Roboto or Montserrat anywhere. Wired as utilities but no callsite uses them — kept available for marketing-style surfaces (e.g. future landing page) without committing them now
 - Uninstalling Inter + JetBrains Mono. Done — they were unreferenced after the redirect, so `npm uninstall` was a clean cleanup
-- Overriding LoginPage hero h1 to Founders if Spock is too heavy at `text-4xl`. Left as Spock for now; will visual-check on dev server next
+
+**Post-deploy visual iterations (2026-05-19 PM):**
+- **LoginPage hero h1 override → reverted.** Pushed `font-founders text-4xl font-semibold` as an override on the hero "Align goals at the speed of execution" h1 (commit `df3126f`), worried Spock would read too heavy at that size. After visual check, reverted (commit `f7534fe`) — Spock at `text-4xl` reads as a strong brand statement that supports the AtomAlign logotype directly above. Keep Spock on the hero
+- **AtomAlign ↔ subtitle gap on sidebar + login card → first attempt reverted, second attempt landed.** First attempt used `leading-none` on the AtomAlign span plus `mt-1` / `mt-1.5` on the subtitle (commit `a085723`). `leading-none` on Spock Bold clipped visually on the deployed page, so the whole attempt was reverted (commit `f7534fe`). Second attempt kept `leading-tight` on the title and added just `-mt-1.5` on the login card's `CardDescription` (commit `205d6b8`) — landed cleanly. **Sidebar AtomAlign / subtitle pairing left at default** (no `-mt-*` on the sidebar subtitle); the smaller `text-sm` AtomAlign + `text-[10px]` subtitle there doesn't have the same visible gap as the larger card header. Revisit only if it starts looking off
+
+### U. Icon sweep — Phosphor + react-icons → Lucide (2026-05-19)
+
+Goal: consolidate the icon stack. The project had three icon libraries installed (`lucide-react` already in heavy use, `@phosphor-icons/react`, and `react-icons`). `react-icons` was dead weight (zero imports); `@phosphor-icons/react` covered just 4 icons across 3 files. Standardising on Lucide simplifies future contributions and shaves the bundle.
+
+**Replacements:**
+- `XIcon` → `X` ([src/components/ui/dialog.tsx:8](src/components/ui/dialog.tsx#L8)) — dialog close button
+- `CaretDownIcon` → `ChevronDown` ([src/components/ui/select.tsx](src/components/ui/select.tsx), [src/pages/admin/UsersPage.tsx](src/pages/admin/UsersPage.tsx) × 3) — select trigger, scroll-down button, user role dropdowns
+- `CaretUpIcon` → `ChevronUp` ([src/components/ui/select.tsx:154](src/components/ui/select.tsx#L154)) — select scroll-up button
+- `CheckIcon` → `Check` ([src/components/ui/select.tsx:120](src/components/ui/select.tsx#L120)) — selected item indicator
+
+**Visual difference:** Phosphor *Carets* are wedge-shaped (heavier stroke, filled triangle feel); Lucide *Chevrons* are arrow-shaped (thinner stroke, open V). Same role, same `size-4` sizing, slightly more refined look — matches the rest of the lucide-react usages already in admin/employee/manager pages.
+
+**Files changed:**
+- [src/components/ui/dialog.tsx](src/components/ui/dialog.tsx) — XIcon → X, removed Phosphor import
+- [src/components/ui/select.tsx](src/components/ui/select.tsx) — 3 Caret/Check → Chevron/Check replacements, single Phosphor import → lucide-react import
+- [src/pages/admin/UsersPage.tsx](src/pages/admin/UsersPage.tsx) — merged `ChevronDown` into existing lucide-react import line; removed Phosphor import; 3 callsites updated
+- [package.json](package.json) — removed `@phosphor-icons/react` + `react-icons`
+
+**Verification:**
+- [x] `grep` for `phosphor|CaretDownIcon|CaretUpIcon|CheckIcon|XIcon|react-icons` in `src/` returns no matches
+- [x] `npx tsc -b` — clean
+
+**Considered + deferred:**
+- Re-styling the select scroll buttons (`SelectScrollUpButton` / `SelectScrollDownButton`) now that the icon is an outline chevron rather than a filled caret. Visually fine on dark surfaces; revisit if the icons feel too thin
 
 ### Pending migrations to the "no opacity on dialogs" rule
 
