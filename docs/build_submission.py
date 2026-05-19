@@ -52,17 +52,6 @@ def main():
              new_x="LMARGIN", new_y="NEXT")
     pdf.ln(3)
     hr(pdf, color=(15, 23, 42))
-
-    # ---------------- Submitter (one line) ----------------
-    pdf.ln(1)
-    pdf.set_font("DejaVu", "B", 9.5)
-    pdf.set_text_color(71, 85, 105)
-    pdf.cell(28, 5, "Submitter:")
-    pdf.set_font("DejaVu", "", 9.5)
-    pdf.set_text_color(15, 23, 42)
-    pdf.cell(0, 5,
-             "Vaibhav Satish Pardeshi  ·  vaibhavpardeshi190@gmail.com  ·  +91 9923307579  ·  MMCOE, Karve Nagar, Pune",
-             new_x="LMARGIN", new_y="NEXT")
     pdf.ln(4)
 
     # ---------------- Item 1: Working link ----------------
