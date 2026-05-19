@@ -161,10 +161,10 @@ export default function LoginPage() {
           <div className="flex items-center gap-3">
             <img src={logoUrl} alt="" aria-hidden="true" className="h-12 w-12 shrink-0" />
             <div className="flex flex-col">
-              <CardTitle className="text-2xl leading-tight">
+              <CardTitle className="text-2xl leading-none">
                 <WordFadeIn text="AtomAlign" className="font-spock font-bold" />
               </CardTitle>
-              <CardDescription>Goal Setting & Tracking</CardDescription>
+              <CardDescription className="mt-1.5">Goal Setting & Tracking</CardDescription>
             </div>
           </div>
         </CardHeader>
