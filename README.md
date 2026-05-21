@@ -12,9 +12,9 @@ In-house portal for company-wide quarterly goal setting, manager approval, achie
 
 Watch the guided Create Team wizard in action — replace the demo admin, add managers + employees, and reveal the live org tree.
 
-<video src="https://github.com/Vaibhav5771/atomalign/raw/main/docs/videos/onboarding.mp4" controls width="800"></video>
+[![Watch the onboarding walkthrough on YouTube](https://img.youtube.com/vi/YkrNVvH6uXc/maxresdefault.jpg)](https://youtu.be/YkrNVvH6uXc)
 
-> Browser blocking the embed? [Open the video directly](docs/videos/onboarding.mp4).
+> ▶️ [Watch on YouTube →](https://youtu.be/YkrNVvH6uXc)
 
 > ✉️ **Use real email addresses in the wizard.** The mail service is wired up — managers and employees you create will receive real welcome emails, plus goal-event notifications (submitted / approved / returned / check-in saved) and escalation reminders. Emails may land in Spam (hackathon SMTP relay).
 
