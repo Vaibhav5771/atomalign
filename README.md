@@ -1,4 +1,4 @@
-﻿# AtomAlign
+# AtomAlign
 
 In-house portal for company-wide quarterly goal setting, manager approval, achievement tracking, escalations, and HR-level analytics. Built for **AtomQuest Hackathon 1.0**.
 
@@ -10,18 +10,83 @@ In-house portal for company-wide quarterly goal setting, manager approval, achie
 
 ## Screenshots
 
+### Sign in & onboarding
+
 <table>
   <tr>
-    <td align="center">
+    <td align="center" width="50%">
       <img src="docs/screenshots/login.png" alt="Login" width="480"/><br/>
       <sub><b>Login</b> — Sign in with demo credentials admin@demo.com | Demo@1234 </sub>
     </td>
-    <td align="center">
+    <td align="center" width="50%">
       <img src="docs/screenshots/team-hierarchy.png" alt="Team Hierarchy" width="480"/><br/>
       <sub><b>Team Hierarchy</b> — Create your team with real email ids and receive emails updates on your real mails address</sub>
     </td>
   </tr>
 </table>
+
+### Employee — set goals
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/screenshots/employee-add-goals.png" alt="Add Goals" width="480"/><br/>
+      <sub><b>Add Goals</b> — Pick UoM (Numeric / Percent / Timeline / Zero) and the target field adapts: stepper, slider, calendar popover, or zero-tolerance lock</sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="docs/screenshots/employee-submit-goals.png" alt="Submit Goal Sheet" width="480"/><br/>
+      <sub><b>Submit Goal Sheet</b> — Goals must total exactly 100% weightage; a Lottie outcome confirms every save and submission</sub>
+    </td>
+  </tr>
+</table>
+
+### Manager — review & approve
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/screenshots/manager-portal.png" alt="Team Portal" width="480"/><br/>
+      <sub><b>Team Portal</b> — Live counts of pending and approved goal sheets across your direct reports</sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="docs/screenshots/manager-review-sheet.png" alt="Review Sheet" width="480"/><br/>
+      <sub><b>Review Sheet</b> — Tweak any target or weightage inline (auto-saves on blur), add a manager remark, then approve or return for rework</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/screenshots/manager-approve-goals.png" alt="Approve Goals" width="480"/><br/>
+      <sub><b>Approve Goals</b> — Sheet locks for the cycle on approval; the employee receives an approval email instantly</sub>
+    </td>
+    <td width="50%"></td>
+  </tr>
+</table>
+
+### Admin — manage org & analyze
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/screenshots/admin-users.png" alt="User Management" width="480"/><br/>
+      <sub><b>User Management</b> — Create employees / managers / admins with role + reporting line; edit or delete with cascading cleanup</sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="docs/screenshots/admin-shared-goals.png" alt="Shared Goals" width="480"/><br/>
+      <sub><b>Shared Goals</b> — Push an org-wide goal to multiple employees in one click; recipients see it as a locked title + target</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/screenshots/admin-reports.png" alt="Reports" width="480"/><br/>
+      <sub><b>Reports</b> — Achievement export to XLSX, completion dashboard, and full audit trail</sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="docs/screenshots/admin-analytics.png" alt="Analytics" width="480"/><br/>
+      <sub><b>Analytics</b> — QoQ trends, goal distribution, team completion, and manager effectiveness in one dashboard</sub>
+    </td>
+  </tr>
+</table>
+
 **Architecture diagram:** [`context/architecture.png`](./context/architecture.png)
 **Demo credentials walkthrough:** [`context/demo-credentials.md`](./context/demo-credentials.md)
 **Master status doc:** [`context/progress-tracker.md`](./context/progress-tracker.md)
