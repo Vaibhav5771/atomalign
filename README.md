@@ -1,10 +1,27 @@
-# AtomAlign
+﻿# AtomAlign
 
 In-house portal for company-wide quarterly goal setting, manager approval, achievement tracking, escalations, and HR-level analytics. Built for **AtomQuest Hackathon 1.0**.
 
 **Live demo:** https://atomalignv.netlify.app
 **Submission document:** [`docs/SUBMISSION.pdf`](./docs/SUBMISSION.pdf) (single file containing the working link, repo, and architecture diagram)
 **Onboarding + email walkthrough:** [`docs/ONBOARDING.md`](./docs/ONBOARDING.md) — step-by-step wizard flow + what emails fire when + how to configure SMTP for a fork
+
+---
+
+## Screenshots
+
+<table>
+  <tr>
+    <td align="center">
+      <img src="docs/screenshots/login.png" alt="Login" width="480"/><br/>
+      <sub><b>Login</b> — Sign in with demo credentials as mentioned below, or use your real email while creating the team</sub>
+    </td>
+    <td align="center">
+      <img src="docs/screenshots/team-hierarchy.png" alt="Team Hierarchy" width="480"/><br/>
+      <sub><b>Team Hierarchy</b> — Create your team via the guided wizard and receive welcome emails on your real mail address</sub>
+    </td>
+  </tr>
+</table>
 **Architecture diagram:** [`context/architecture.png`](./context/architecture.png)
 **Demo credentials walkthrough:** [`context/demo-credentials.md`](./context/demo-credentials.md)
 **Master status doc:** [`context/progress-tracker.md`](./context/progress-tracker.md)
