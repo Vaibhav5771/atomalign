@@ -8,6 +8,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { NumberTicker } from "@/components/ui/magicui/number-ticker";
 import { Badge } from "@/components/ui/badge";
