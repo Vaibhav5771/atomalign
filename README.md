@@ -104,6 +104,7 @@ There is **one** pre-seeded login. Manager and Employee accounts are created by 
 **What happens after you sign in:**
 
 1. The **Create Team** wizard auto-opens on `/admin/dashboard` (first visit per browser).
+   - Missed it or closed it accidentally? Just click the **Create Team** button at the top-right of `/admin/dashboard` to re-open the wizard at any time.
 2. **Step 0** — replace `admin@demo.com` with your own email + password. This creates a *new* admin and signs you in as that user. `admin@demo.com / Demo@1234` is preserved untouched as a permanent fallback if anything goes wrong.
 3. **Step 1** — add 1–5 managers using real email addresses.
 4. **Step 2** — add 1–20 employees, each assigned to a manager from Step 1.
