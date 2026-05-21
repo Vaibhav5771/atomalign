@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Pencil, Trash2, Lock, Share2, Loader2 } from "lucide-react";
+import { Check, Pencil, Trash2, Lock, Share2, Loader2 } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -10,7 +10,9 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
+import { Slider } from "@/components/ui/slider";
+import { NumberTicker } from "@/components/ui/magicui/number-ticker";
+import { cn } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -38,6 +40,50 @@ function sharerLabel(profile: SharedByProfile | undefined) {
   const name = profile.full_name || profile.email;
   const roleLabel = profile.role === "ADMIN" ? "Admin" : profile.role === "MANAGER" ? "Manager" : "";
   return roleLabel ? `Shared by ${name} (${roleLabel})` : `Shared by ${name}`;
+}
+
+function InlineWeightageSlider({
+  value,
+  onCommit,
+}: {
+  value: number;
+  onCommit: (v: number) => Promise<{ error: string | null }>;
+}) {
+  const [draft, setDraft] = useState(value);
+  const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+
+  const commit = async (n: number) => {
+    if (n === value || n < 10 || n > 100) return;
+    setStatus("saving");
+    const { error } = await onCommit(n);
+    if (error) {
+      setStatus("error");
+      setDraft(value);
+    } else {
+      setStatus("saved");
+      window.setTimeout(() => setStatus("idle"), 1200);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-2 min-w-[150px]">
+      <Slider
+        value={[draft]}
+        min={10}
+        max={100}
+        step={10}
+        disabled={status === "saving"}
+        onValueChange={(v) => setDraft(v[0] ?? draft)}
+        onValueCommit={(v) => void commit(v[0] ?? draft)}
+        className="flex-1"
+      />
+      <span className={cn("text-sm font-semibold tabular-nums w-10 text-right shrink-0 text-primary")}>
+        <NumberTicker value={draft} suffix="%" />
+      </span>
+      {status === "saving" && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+      {status === "saved" && <Check className="h-3 w-3 text-primary" />}
+    </div>
+  );
 }
 
 export function GoalList({
@@ -124,22 +170,9 @@ export function GoalList({
                 <TableCell className="font-mono tabular-nums text-xs">{g.target}</TableCell>
                 <TableCell className="font-mono tabular-nums">
                   {canEditWeightageOnly ? (
-                    <Input
-                      key={g.weightage}
-                      type="number"
-                      step={1}
-                      inputMode="numeric"
-                      defaultValue={g.weightage}
-                      className="h-7 w-20"
-                      onBlur={async (e) => {
-                        const v = Number(e.target.value);
-                        if (v < 10 || v > 100 || v === g.weightage) {
-                          e.target.value = String(g.weightage);
-                          return;
-                        }
-                        const { error } = await onUpdate!(g.id, { weightage: v });
-                        if (error) e.target.value = String(g.weightage);
-                      }}
+                    <InlineWeightageSlider
+                      value={g.weightage}
+                      onCommit={(v) => onUpdate!(g.id, { weightage: v })}
                     />
                   ) : (
                     `${g.weightage}%`
@@ -197,22 +230,9 @@ export function GoalList({
               <TableCell className="font-mono tabular-nums text-xs">{source.target}</TableCell>
               <TableCell className="font-mono tabular-nums">
                 {editable && onUpdateSharedWeightage ? (
-                  <Input
-                    key={link.weightage}
-                    type="number"
-                    step={1}
-                    inputMode="numeric"
-                    defaultValue={link.weightage}
-                    className="h-7 w-20"
-                    onBlur={async (e) => {
-                      const v = Number(e.target.value);
-                      if (v < 10 || v > 100 || v === link.weightage) {
-                        e.target.value = String(link.weightage);
-                        return;
-                      }
-                      const { error } = await onUpdateSharedWeightage(link.id, v);
-                      if (error) e.target.value = String(link.weightage);
-                    }}
+                  <InlineWeightageSlider
+                    value={link.weightage}
+                    onCommit={(v) => onUpdateSharedWeightage(link.id, v)}
                   />
                 ) : (
                   `${link.weightage}%`

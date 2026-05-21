@@ -342,81 +342,82 @@ export function GoalForm({ initial, onSubmit, onCancel, submitLabel = "Add goal"
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        {showDirection && (
-          <div className="space-y-1">
-            <Label>Scoring direction *</Label>
-            <p className="text-xs text-muted-foreground">
-              <span className="font-medium">Higher is better</span> — grow-metrics like revenue, NPS.{" "}
-              <span className="font-medium">Lower is better</span> — shrink-metrics like cost, TAT, defects.
-            </p>
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant={direction === "HIGHER" ? "default" : "outline"}
-                size="sm"
-                className="flex-1 rounded-sm"
-                onClick={() => setValue("direction", "HIGHER", { shouldValidate: true })}
-                title="Score = Achievement ÷ Target. Use for grow-metrics like revenue or NPS."
-              >
-                Higher is better
-              </Button>
-              <Button
-                type="button"
-                variant={direction === "LOWER" ? "default" : "outline"}
-                size="sm"
-                className="flex-1 rounded-sm"
-                onClick={() => setValue("direction", "LOWER", { shouldValidate: true })}
-                title="Score = Target ÷ Achievement. Use for shrink-metrics like cost, TAT, or defects."
-              >
-                Lower is better
-              </Button>
-            </div>
-          </div>
-        )}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <Label htmlFor="weightage">Weightage (%) *</Label>
-            <span className="text-xs text-muted-foreground">steps of 10 · minimum 10%</span>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="flex-1 space-y-1.5">
-              <Slider
-                id="weightage"
-                value={[watch("weightage") || 10]}
-                min={10}
-                max={100}
-                step={10}
-                onValueChange={(v) => setValue("weightage", v[0] ?? 10, { shouldValidate: true })}
-              />
-              <div className="flex justify-between text-[0.6rem] text-muted-foreground tabular-nums px-1">
-                {[10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((t) => (
-                  <span key={t}>{t}</span>
-                ))}
-              </div>
-            </div>
-            <div className="flex items-center gap-2 rounded-md border border-border/60 bg-card/60 px-3 py-1.5 min-w-[110px] shrink-0">
-              <AnimatedCircularProgress
-                value={watch("weightage") || 10}
-                size={36}
-                strokeWidth={4}
-                showValue={false}
-              />
-              <div className="leading-tight">
-                <div className="text-[0.6rem] uppercase tracking-wider text-muted-foreground">Share</div>
-                <div className="text-sm font-semibold tabular-nums">
-                  <NumberTicker value={watch("weightage") || 10} suffix="%" />
-                </div>
-              </div>
-            </div>
-          </div>
-          {errors.weightage && (
-            <p className="text-xs text-destructive">{errors.weightage.message}</p>
-          )}
+      {/* Scoring direction — its own row (only NUMERIC / PERCENT) */}
+      {showDirection && (
+        <div className="space-y-1">
+          <Label>Scoring direction *</Label>
           <p className="text-xs text-muted-foreground">
-            Each goal must be at least 10%. All goals together must add up to exactly 100% before you can submit.
+            <span className="font-medium">Higher is better</span> — grow-metrics like revenue, NPS.{" "}
+            <span className="font-medium">Lower is better</span> — shrink-metrics like cost, TAT, defects.
           </p>
+          <div className="flex gap-2 max-w-md">
+            <Button
+              type="button"
+              variant={direction === "HIGHER" ? "default" : "outline"}
+              size="sm"
+              className="flex-1 rounded-sm"
+              onClick={() => setValue("direction", "HIGHER", { shouldValidate: true })}
+              title="Score = Achievement ÷ Target. Use for grow-metrics like revenue or NPS."
+            >
+              Higher is better
+            </Button>
+            <Button
+              type="button"
+              variant={direction === "LOWER" ? "default" : "outline"}
+              size="sm"
+              className="flex-1 rounded-sm"
+              onClick={() => setValue("direction", "LOWER", { shouldValidate: true })}
+              title="Score = Target ÷ Achievement. Use for shrink-metrics like cost, TAT, or defects."
+            >
+              Lower is better
+            </Button>
+          </div>
         </div>
+      )}
+
+      {/* Weightage — full-width slider on its own row (matches admin SharedGoalsPage) */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <Label htmlFor="weightage">Weightage (%) *</Label>
+          <span className="text-xs text-muted-foreground">steps of 10 · minimum 10%</span>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="flex-1 space-y-1.5">
+            <Slider
+              id="weightage"
+              value={[watch("weightage") || 10]}
+              min={10}
+              max={100}
+              step={10}
+              onValueChange={(v) => setValue("weightage", v[0] ?? 10, { shouldValidate: true })}
+            />
+            <div className="flex justify-between text-[0.6rem] text-muted-foreground tabular-nums px-1">
+              {[10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((t) => (
+                <span key={t}>{t}</span>
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center gap-2 rounded-md border border-border/60 bg-card/60 px-3 py-1.5 min-w-[110px] shrink-0">
+            <AnimatedCircularProgress
+              value={watch("weightage") || 10}
+              size={36}
+              strokeWidth={4}
+              showValue={false}
+            />
+            <div className="leading-tight">
+              <div className="text-[0.6rem] uppercase tracking-wider text-muted-foreground">Share</div>
+              <div className="text-sm font-semibold tabular-nums">
+                <NumberTicker value={watch("weightage") || 10} suffix="%" />
+              </div>
+            </div>
+          </div>
+        </div>
+        {errors.weightage && (
+          <p className="text-xs text-destructive">{errors.weightage.message}</p>
+        )}
+        <p className="text-xs text-muted-foreground">
+          Each goal must be at least 10%. All goals together must add up to exactly 100% before you can submit.
+        </p>
       </div>
 
       <div className="flex justify-end gap-2 pt-1">
