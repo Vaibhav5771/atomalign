@@ -8,6 +8,16 @@ In-house portal for company-wide quarterly goal setting, manager approval, achie
 
 ---
 
+## Onboarding walkthrough
+
+Watch the guided Create Team wizard in action — replace the demo admin, add managers + employees, and reveal the live org tree.
+
+<video src="https://github.com/Vaibhav5771/atomalign/raw/main/docs/videos/onboarding.mp4" controls width="800"></video>
+
+> Browser blocking the embed? [Open the video directly](docs/videos/onboarding.mp4).
+
+---
+
 ## Screenshots
 
 ### Sign in & onboarding
