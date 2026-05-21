@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { CalendarIcon, Loader2 } from "lucide-react";
+import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import {
   Select,
   SelectContent,
@@ -11,6 +13,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { NumericStepper } from "@/components/shared/NumericStepper";
+import { cn } from "@/lib/utils";
 import { CheckInScoreCard } from "@/components/goals/CheckInScoreCard";
 import { computeGoalScore } from "@/lib/utils";
 import type { CheckIn, CheckInStatus, Goal, Quarter } from "@/types";
@@ -61,6 +65,7 @@ export function CheckInForm({
   const [actualDate, setActualDate] = useState<string>(checkIn?.actual_date ?? "");
   const [status, setStatus] = useState<CheckInStatus>(checkIn?.status ?? "NOT_STARTED");
   const [saving, setSaving] = useState(false);
+  const [datePopoverOpen, setDatePopoverOpen] = useState(false);
 
   // Reset local state when the underlying check_in changes (e.g. quarter switch).
   useEffect(() => {
@@ -140,24 +145,43 @@ export function CheckInForm({
         <div className="space-y-1">
           <Label htmlFor={`actual-${goal.id}`}>{actualLabel(goal.uom)}</Label>
           {goal.uom === "TIMELINE" ? (
-            <Input
-              id={`actual-${goal.id}`}
-              type="date"
-              value={actualDate}
-              onChange={(e) => setActualDate(e.target.value)}
-              disabled={disabled}
-            />
+            <Popover open={datePopoverOpen} onOpenChange={setDatePopoverOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  id={`actual-${goal.id}`}
+                  type="button"
+                  variant="outline"
+                  disabled={disabled}
+                  className={cn(
+                    "w-full justify-start text-left font-normal h-9 rounded-sm",
+                    !actualDate && "text-muted-foreground",
+                  )}
+                >
+                  <CalendarIcon className="h-3.5 w-3.5 mr-2 opacity-70" />
+                  {actualDate ? format(new Date(actualDate), "PPP") : "Pick completion date"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="p-0">
+                <Calendar
+                  mode="single"
+                  selected={actualDate ? new Date(actualDate) : undefined}
+                  onSelect={(d) => {
+                    if (!d) return;
+                    setActualDate(format(d, "yyyy-MM-dd"));
+                    setDatePopoverOpen(false);
+                  }}
+                  autoFocus
+                />
+              </PopoverContent>
+            </Popover>
           ) : (
-            <Input
+            <NumericStepper
               id={`actual-${goal.id}`}
-              type="number"
-              step={goal.uom === "ZERO" ? 1 : "any"}
-              min={0}
-              inputMode={goal.uom === "ZERO" ? "numeric" : "decimal"}
               value={actual}
-              onChange={(e) => setActual(e.target.value)}
+              onChange={setActual}
+              min={0}
               placeholder={goal.uom === "ZERO" ? "0" : "Enter actual"}
-              disabled={disabled}
+              className={disabled ? "pointer-events-none opacity-50" : ""}
             />
           )}
         </div>

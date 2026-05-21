@@ -8,8 +8,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Lock, Loader2, Check, Pencil } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { CalendarIcon, Lock, Loader2, Check, Pencil } from "lucide-react";
+import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 import type { Goal } from "@/types";
 
 interface Props {
@@ -133,6 +138,68 @@ function InlineText({
   );
 }
 
+function InlineDate({
+  value,
+  disabled,
+  onCommit,
+}: {
+  value: string;
+  disabled: boolean;
+  onCommit: (v: string) => Promise<{ error: string | null }>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [status, setStatus] = useState<Status>("idle");
+
+  const commit = async (iso: string) => {
+    if (iso === value) return;
+    setStatus("saving");
+    const { error } = await onCommit(iso);
+    if (error) {
+      setStatus("error");
+    } else {
+      setStatus("saved");
+      window.setTimeout(() => setStatus("idle"), 1200);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <Popover open={open && !disabled} onOpenChange={(o) => !disabled && setOpen(o)}>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={disabled || status === "saving"}
+            className={cn(
+              "h-8 justify-start text-left font-normal text-sm rounded-sm",
+              !disabled && "border-primary/40 bg-background hover:border-primary",
+              !value && "text-muted-foreground",
+            )}
+          >
+            <CalendarIcon className="h-3 w-3 mr-1.5 opacity-60" />
+            {value ? format(new Date(value), "dd MMM yyyy") : "Pick date"}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent align="start" className="p-0">
+          <Calendar
+            mode="single"
+            selected={value ? new Date(value) : undefined}
+            onSelect={(d) => {
+              if (!d) return;
+              const iso = format(d, "yyyy-MM-dd");
+              setOpen(false);
+              void commit(iso);
+            }}
+            autoFocus
+          />
+        </PopoverContent>
+      </Popover>
+      {status === "saving" && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+      {status === "saved" && <Check className="h-3 w-3 text-primary" />}
+    </div>
+  );
+}
+
 export function ReviewPanel({ goals, readOnly, onInlineUpdate }: Props) {
   const total = goals.reduce((s, g) => s + g.weightage, 0);
 
@@ -181,11 +248,19 @@ export function ReviewPanel({ goals, readOnly, onInlineUpdate }: Props) {
                 <Badge variant="outline">{g.uom}</Badge>
               </TableCell>
               <TableCell>
-                <InlineText
-                  value={g.target}
-                  disabled={readOnly}
-                  onCommit={(v) => onInlineUpdate(g.id, { target: v })}
-                />
+                {g.uom === "TIMELINE" ? (
+                  <InlineDate
+                    value={g.target}
+                    disabled={readOnly}
+                    onCommit={(v) => onInlineUpdate(g.id, { target: v, target_date: v })}
+                  />
+                ) : (
+                  <InlineText
+                    value={g.target}
+                    disabled={readOnly}
+                    onCommit={(v) => onInlineUpdate(g.id, { target: v })}
+                  />
+                )}
               </TableCell>
               <TableCell>
                 <InlineNumber

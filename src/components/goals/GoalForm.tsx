@@ -1,8 +1,9 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Loader2 } from "lucide-react";
+import { CalendarIcon, Loader2, Lock } from "lucide-react";
+import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,7 +15,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { Slider } from "@/components/ui/slider";
+import { NumericStepper } from "@/components/shared/NumericStepper";
+import { NumberTicker } from "@/components/ui/magicui/number-ticker";
+import { AnimatedCircularProgress } from "@/components/ui/magicui/animated-circular-progress";
+import { cn } from "@/lib/utils";
 import type { Goal, GoalDraft, ScoreDirection, UoMType } from "@/types";
+
+function formatLargeNumber(n: number): string {
+  if (!Number.isFinite(n) || n === 0) return "";
+  if (Math.abs(n) >= 1_00_00_000) return `≈ ${(n / 1_00_00_000).toFixed(2)} Cr`;
+  if (Math.abs(n) >= 1_00_000) return `≈ ${(n / 1_00_000).toFixed(2)} L`;
+  if (Math.abs(n) >= 1_000) return `≈ ${(n / 1_000).toFixed(1)} K`;
+  return "";
+}
 
 const schema = z
   .object({
@@ -88,6 +104,8 @@ const TARGET_PLACEHOLDER: Record<UoMType, string> = {
 };
 
 export function GoalForm({ initial, onSubmit, onCancel, submitLabel = "Add goal" }: Props) {
+  const [datePopoverOpen, setDatePopoverOpen] = useState(false);
+
   const {
     register,
     handleSubmit,
@@ -110,6 +128,8 @@ export function GoalForm({ initial, onSubmit, onCancel, submitLabel = "Add goal"
 
   const uom = watch("uom");
   const direction = watch("direction");
+  const targetValue = watch("target");
+  const numericTarget = Number(targetValue) || 0;
 
   // Keep the text Target column sensible when UoM switches so users aren't
   // confused by stale values:
@@ -144,8 +164,6 @@ export function GoalForm({ initial, onSubmit, onCancel, submitLabel = "Add goal"
   });
 
   const showDirection = uom === "NUMERIC" || uom === "PERCENT";
-  const showTextTarget = uom === "NUMERIC" || uom === "PERCENT";
-  const showDate = uom === "TIMELINE";
 
   return (
     <form onSubmit={submit} className="space-y-3" noValidate>
@@ -189,46 +207,137 @@ export function GoalForm({ initial, onSubmit, onCancel, submitLabel = "Add goal"
           <p className="text-xs text-muted-foreground">{TARGET_HINTS[uom]}</p>
         </div>
 
-        {showTextTarget && (
+        {/* NUMERIC — stepper + Indian numbering preview */}
+        {uom === "NUMERIC" && (
           <div className="space-y-1">
             <Label htmlFor="target">Target *</Label>
-            <Input
+            <NumericStepper
               id="target"
-              type="number"
-              inputMode="decimal"
-              step="any"
-              {...register("target")}
-              placeholder={TARGET_PLACEHOLDER[uom]}
+              value={targetValue}
+              onChange={(v) => setValue("target", v, { shouldValidate: true })}
+              placeholder="e.g. 50000000"
+              className={cn(errors.target && "ring-1 ring-destructive/30 shadow-[0_0_18px_-8px_color-mix(in_oklch,var(--destructive)_55%,transparent)]")}
             />
+            {errors.target && <p className="text-xs text-destructive">{errors.target.message}</p>}
+            <div className={cn(
+              "rounded-md border border-primary/30 bg-primary/[0.06] px-2.5 py-1.5",
+              "shadow-[0_0_18px_-10px_color-mix(in_oklch,var(--primary)_55%,transparent)]",
+            )}>
+              <div className="text-[0.6rem] uppercase tracking-wider text-muted-foreground">Preview</div>
+              <div className="text-base font-semibold tabular-nums text-primary leading-tight">
+                <NumberTicker value={numericTarget} />
+              </div>
+              {formatLargeNumber(numericTarget) && (
+                <div className="text-[0.65rem] text-muted-foreground">{formatLargeNumber(numericTarget)}</div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* PERCENT — slider + circular progress */}
+        {uom === "PERCENT" && (
+          <div className="space-y-1">
+            <Label htmlFor="target">Target percent *</Label>
+            <div className={cn(
+              "flex items-center gap-3 pt-1 rounded-md px-1",
+              errors.target && "ring-1 ring-destructive/30 shadow-[0_0_18px_-8px_color-mix(in_oklch,var(--destructive)_55%,transparent)]",
+            )}>
+              <div className="flex-1 space-y-1.5">
+                <Slider
+                  id="target"
+                  value={[Number(targetValue) || 0]}
+                  min={0}
+                  max={100}
+                  step={10}
+                  onValueChange={(v) => setValue("target", String(v[0] ?? 0), { shouldValidate: true })}
+                />
+                <div className="flex justify-between text-[0.6rem] text-muted-foreground tabular-nums px-1">
+                  {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((t) => (
+                    <span key={t}>{t}</span>
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <AnimatedCircularProgress
+                  value={Math.max(0, Math.min(100, Number(targetValue) || 0))}
+                  size={48}
+                  strokeWidth={5}
+                  showValue={false}
+                />
+                <div className="w-12 text-right text-sm font-semibold tabular-nums text-primary">
+                  <NumberTicker value={Math.max(0, Math.min(100, Number(targetValue) || 0))} suffix="%" />
+                </div>
+              </div>
+            </div>
             {errors.target && <p className="text-xs text-destructive">{errors.target.message}</p>}
           </div>
         )}
 
-        {showDate && (
+        {/* TIMELINE — shadcn Calendar popover */}
+        {uom === "TIMELINE" && (
           <div className="space-y-1">
             <Label htmlFor="target_date">Target deadline *</Label>
-            <Input id="target_date" type="date" {...register("target_date")} />
+            <Popover open={datePopoverOpen} onOpenChange={setDatePopoverOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  id="target_date"
+                  type="button"
+                  variant="outline"
+                  className={cn(
+                    "w-full justify-start text-left font-normal h-9 rounded-sm",
+                    !targetDateValue && "text-muted-foreground",
+                    errors.target_date && "border-destructive/55 ring-1 ring-destructive/20 shadow-[0_0_18px_-8px_color-mix(in_oklch,var(--destructive)_55%,transparent)]",
+                  )}
+                >
+                  <CalendarIcon className="h-3.5 w-3.5 mr-2 opacity-70" />
+                  {targetDateValue ? format(new Date(targetDateValue), "PPP") : "Pick a date"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="p-0">
+                <Calendar
+                  mode="single"
+                  selected={targetDateValue ? new Date(targetDateValue) : undefined}
+                  onSelect={(d) => {
+                    if (!d) return;
+                    const iso = format(d, "yyyy-MM-dd");
+                    setValue("target_date", iso, { shouldValidate: true });
+                    setValue("target", iso, { shouldValidate: true });
+                    setDatePopoverOpen(false);
+                  }}
+                  disabled={(date) => {
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    return date < today;
+                  }}
+                  autoFocus
+                />
+              </PopoverContent>
+            </Popover>
             {errors.target_date && (
               <p className="text-xs text-destructive">{errors.target_date.message}</p>
             )}
           </div>
         )}
 
+        {/* ZERO — destructive locked panel */}
         {uom === "ZERO" && (
           <div className="space-y-1">
-            <Label htmlFor="target_zero">Target (auto-set)</Label>
-            <Input
-              id="target_zero"
-              value="0"
-              readOnly
-              disabled
-              tabIndex={-1}
-              className="font-mono"
-            />
-            <p className="text-xs text-muted-foreground">
-              Zero-based goals have a fixed target of 0. Check-in scores 100%
-              only when actual = 0, otherwise 0%.
-            </p>
+            <Label>Target (locked)</Label>
+            <div className={cn(
+              "relative flex items-center gap-3 rounded-md border border-destructive/40 bg-destructive/[0.07] px-3 py-2.5",
+              "shadow-[0_0_18px_-10px_color-mix(in_oklch,var(--destructive)_55%,transparent)]",
+            )}>
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="absolute inline-flex h-full w-full rounded-full bg-destructive opacity-60 motion-safe:animate-ping" />
+                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-destructive" />
+              </span>
+              <div className="text-3xl font-semibold tabular-nums text-destructive leading-none">0</div>
+              <div className="flex-1">
+                <div className="text-[0.65rem] uppercase tracking-wider text-muted-foreground">Zero tolerance</div>
+                <div className="text-xs text-muted-foreground">Locked at zero — any non-zero incident scores 0%.</div>
+              </div>
+              <Lock className="h-3.5 w-3.5 text-destructive/70" />
+            </div>
           </div>
         )}
       </div>
