@@ -16,6 +16,8 @@ Watch the guided Create Team wizard in action — replace the demo admin, add ma
 
 > Browser blocking the embed? [Open the video directly](docs/videos/onboarding.mp4).
 
+> ✉️ **Use real email addresses in the wizard.** The mail service is wired up — managers and employees you create will receive real welcome emails, plus goal-event notifications (submitted / approved / returned / check-in saved) and escalation reminders. Emails may land in Spam (hackathon SMTP relay).
+
 ---
 
 ## Screenshots
