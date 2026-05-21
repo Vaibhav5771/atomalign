@@ -7,8 +7,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Slider } from "@/components/ui/slider";
+import { NumberTicker } from "@/components/ui/magicui/number-ticker";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
@@ -38,28 +39,18 @@ function InlineNumber({
   max?: number;
   onCommit: (v: number) => Promise<{ error: string | null }>;
 }) {
-  const [draft, setDraft] = useState(String(value));
+  const [draft, setDraft] = useState(value);
   const [status, setStatus] = useState<Status>("idle");
 
-  const commit = async () => {
-    const n = Number(draft);
-    if (!Number.isFinite(n) || n === value) {
-      setDraft(String(value));
-      return;
-    }
-    if (min !== undefined && n < min) {
-      setDraft(String(value));
-      return;
-    }
-    if (max !== undefined && n > max) {
-      setDraft(String(value));
-      return;
-    }
+  const commitValue = async (n: number) => {
+    if (!Number.isFinite(n) || n === value) return;
+    if (min !== undefined && n < min) { setDraft(value); return; }
+    if (max !== undefined && n > max) { setDraft(value); return; }
     setStatus("saving");
     const { error } = await onCommit(n);
     if (error) {
       setStatus("error");
-      setDraft(String(value));
+      setDraft(value);
     } else {
       setStatus("saved");
       window.setTimeout(() => setStatus("idle"), 1200);
@@ -67,22 +58,23 @@ function InlineNumber({
   };
 
   return (
-    <div className="flex items-center gap-1.5">
-      <Input
-        type="number"
-        step={1}
-        inputMode="numeric"
+    <div className="flex items-center gap-2 min-w-[150px]">
+      <Slider
+        value={[draft]}
+        min={min ?? 10}
+        max={max ?? 100}
+        step={10}
         disabled={disabled || status === "saving"}
-        value={draft}
-        aria-label="Weightage"
-        title={disabled ? "Read-only" : "Click to edit, blur to save"}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={() => void commit()}
-        className={
-          "h-8 w-20 " +
-          (disabled ? "" : "border-primary/40 bg-background focus:border-primary")
-        }
+        onValueChange={(v) => setDraft(v[0] ?? draft)}
+        onValueCommit={(v) => void commitValue(v[0] ?? draft)}
+        className={cn("flex-1", disabled && "opacity-50")}
       />
+      <span className={cn(
+        "text-sm font-semibold tabular-nums w-10 text-right shrink-0",
+        disabled ? "text-muted-foreground" : "text-primary",
+      )}>
+        <NumberTicker value={draft} suffix="%" />
+      </span>
       {status === "saving" && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
       {status === "saved" && <Check className="h-3 w-3 text-primary" />}
     </div>
