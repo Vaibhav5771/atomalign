@@ -14,11 +14,11 @@ In-house portal for company-wide quarterly goal setting, manager approval, achie
   <tr>
     <td align="center">
       <img src="docs/screenshots/login.png" alt="Login" width="480"/><br/>
-      <sub><b>Login</b> — Sign in with demo credentials as mentioned below, or use your real email while creating the team</sub>
+      <sub><b>Login</b> — Sign in with demo credentials admin@demo.com | Demo@1234 </sub>
     </td>
     <td align="center">
       <img src="docs/screenshots/team-hierarchy.png" alt="Team Hierarchy" width="480"/><br/>
-      <sub><b>Team Hierarchy</b> — Create your team via the guided wizard and receive welcome emails on your real mail address</sub>
+      <sub><b>Team Hierarchy</b> — Create your team with real email ids and receive emails updates on your real mails address</sub>
     </td>
   </tr>
 </table>
